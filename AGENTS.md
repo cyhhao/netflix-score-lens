@@ -15,6 +15,7 @@ Chrome MV3 extension. Source: `https://github.com/cyhhao/netflix-score-lens`. Ru
 - No credentials, personal browser profiles, captured browsing history or private verification reports in Git, screenshots, logs or packages.
 - Sources and rating scales stay distinct; absent/ambiguous results never dim. Localized inference needs verified year/type and IMDb rank 0; manual correction remains possible.
 - Netflix IDs are stable binding identities, not an official cross-provider mapping. Reject stale per-title responses.
+- Extension reload invalidates old content contexts: stop timers/listeners/observers and remove stale overlays, not just catch runtime errors. Keep the real-reload lifecycle test. Localization must not change the host page's document language.
 - Credentials/library enumeration and mutations are trusted-context-only. This restriction is not at-rest encryption; do not claim it is.
 - Never execute provider responses as code. Changes to data handling, hosts/permissions or retention require privacy/store-documentation review.
 - Do not restart a contributor's normal browser or bypass tooling restrictions. Browser tests must use disposable profiles.

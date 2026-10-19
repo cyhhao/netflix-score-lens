@@ -50,7 +50,8 @@ export function registerMessages(messages = {}) {
 export function setLanguage(value = "auto", browserLanguages) {
   preference = normalizeLanguage(value);
   locale = resolveLocale(preference, browserLanguages);
-  if (typeof document !== "undefined" && document.documentElement) document.documentElement.lang = locale;
+  // Locale state must not mutate a host page (e.g. Netflix). Extension pages
+  // opt in to their document language through localizeDOM(document).
   return locale;
 }
 
