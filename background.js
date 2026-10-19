@@ -1,6 +1,6 @@
 import {searchCandidates,resolveCandidate} from './providers.js';
 import {DEFAULTS,cleanSettings,validItem,selectCandidate,candidateInput} from './core.js';
-const VERSION=3, MAX_CACHE=600;
+const VERSION=4, MAX_CACHE=600;
 let health={}, inflight=new Map(), writeQueue=Promise.resolve(), generation=0, active=0, queue=[], cacheMemo=null;
 const itemGenerations=new Map();
 const epochFor=key=>`${generation}:${itemGenerations.get(key)||0}`;
@@ -150,7 +150,7 @@ async function handle(m,sender){
   if(m.type==='SAVE_SETTINGS'){
     const old=await stored(),settings=cleanSettings({...old.settings,...m.settings});
     const apiKey=m.removeApiKey?'':typeof m.apiKey==='string'&&m.apiKey.trim()?m.apiKey.trim().slice(0,100):old.apiKey;
-    await chrome.storage.local.set({settings,credentials:{omdb:apiKey}});
+    await serializeWrite(async()=>{await chrome.storage.local.set({settings,credentials:{omdb:apiKey}});});
     if(apiKey!==old.apiKey||settings.providerMode!==old.settings.providerMode)await resetCache();
     await broadcast({type:'CONFIG',settings});return {settings,hasApiKey:Boolean(apiKey)};
   }

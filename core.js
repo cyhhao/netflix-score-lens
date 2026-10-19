@@ -1,5 +1,5 @@
 // Pure, shared matching and filtering rules. No browser/credential dependency.
-export const DEFAULTS = Object.freeze({enabled:true,dimLowScores:true,scoreSource:'auto',minScore:7,dimOpacity:0.62,revealOnHover:true,providerMode:'auto'});
+export const DEFAULTS = Object.freeze({enabled:true,dimLowScores:true,scoreSource:'auto',minScore:7,dimOpacity:0.62,revealOnHover:true,providerMode:'auto',language:'auto'});
 export const LABELS = {imdb:'IMDb',tvmaze:'TVmaze',rt:'烂番茄',metacritic:'Metacritic'};
 export const normalize = (v='') => String(v).normalize('NFKD').replace(/\p{M}/gu,'').toLowerCase().replace(/&/g,' and ').replace(/[^\p{L}\p{N}]/gu,'');
 export const scaleFor = source => ['rt','metacritic'].includes(source) ? 100 : 10;
@@ -8,6 +8,7 @@ export function cleanSettings(input={}) {
   for (const k of ['enabled','dimLowScores','revealOnHover']) if (typeof input[k]==='boolean') s[k]=input[k];
   if (['auto','imdb','tvmaze','rt','metacritic'].includes(input.scoreSource)) s.scoreSource=input.scoreSource;
   if (input.providerMode==='free') s.providerMode='free';
+  if (['auto','en','zh-CN'].includes(input.language)) s.language=input.language;
   const n=Number(input.minScore);
   s.minScore=Number.isFinite(n) ? Math.max(0,Math.min(scaleFor(s.scoreSource),n)) : scaleFor(s.scoreSource)*0.7;
   const o=Number(input.dimOpacity);

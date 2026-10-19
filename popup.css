@@ -140,6 +140,7 @@ input::placeholder { color: var(--text-3); }
 
 .inline-hint { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 7px 10px; border-radius: 8px; background: rgba(220, 148, 80, .1); color: var(--warn); font-size: 12px; }
 .inline-hint span { flex: 1; }
+.language-wrap { flex: none; width: 168px; }
 
 /* Score threshold */
 .score-out { display: inline-flex; align-items: baseline; gap: 3px; color: var(--gold); font-variant-numeric: tabular-nums; }
@@ -267,7 +268,7 @@ input[type="range"]:disabled { cursor: not-allowed; }
 .cand-meta { font-size: 12px; color: var(--text-3); }
 .cand-meta a { color: var(--text-3); }
 .cand-meta a:hover { color: var(--teal); }
-.candidate.is-current .cand-title::after { content: "当前"; margin-left: 6px; padding: 0 5px; border-radius: 4px; background: var(--teal-soft); color: var(--teal); font-size: 12px; }
+.cand-current { margin-left: 6px; padding: 0 5px; border-radius: 4px; background: var(--teal-soft); color: var(--teal); font-size: 12px; }
 
 .empty { padding: 28px 12px; text-align: center; color: var(--text-3); font-size: 12px; }
 
