@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {getLanguage,getLocale,localizeMessage,normalizeLanguage,registerMessages,resolveLocale,setLanguage,t} from '../i18n.js';
+import {getLanguage,getLocale,localizeDOM,localizeMessage,normalizeLanguage,registerMessages,resolveLocale,setLanguage,t} from '../i18n.js';
 import '../i18n-content.js';
 
 test('normalizes explicit language preferences and browser variants',()=>{
@@ -32,6 +32,18 @@ test('language preference is separate from resolved locale',()=>{
   assert.equal(setLanguage('en',['zh-CN']),'en');
   assert.equal(getLanguage(),'en');
   assert.equal(getLocale(),'en');
+});
+
+test('locale state never changes the host document language; extension pages opt in',()=>{
+  const previous=Object.getOwnPropertyDescriptor(globalThis,'document');
+  try{
+    globalThis.document={nodeType:9,documentElement:{lang:'ja'},querySelectorAll:()=>[]};
+    setLanguage('en');assert.equal(document.documentElement.lang,'ja');
+    setLanguage('zh-CN');assert.equal(document.documentElement.lang,'ja');
+    localizeDOM(document);assert.equal(document.documentElement.lang,'zh-CN');
+  }finally{
+    if(previous)Object.defineProperty(globalThis,'document',previous);else delete globalThis.document;
+  }
 });
 
 test('catalog registration supports explicit bilingual values for extension-owned additions',()=>{
