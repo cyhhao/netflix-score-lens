@@ -1,0 +1,14 @@
+/* Scoped names only: Netflix layout and playback controls remain untouched. */
+.nsl-card { isolation:isolate; }
+.nsl-layer { position:absolute!important; inset:0!important; z-index:8!important; pointer-events:none!important; border-radius:inherit!important; }
+.nsl-shade { position:absolute!important; inset:0!important; border-radius:inherit!important; background:#06090e!important; opacity:0!important; transition:opacity 160ms ease!important; }
+.nsl-low > .nsl-layer > .nsl-shade { opacity:var(--nsl-dim,.62)!important; }
+.nsl-low.nsl-hover-reveal:hover > .nsl-layer > .nsl-shade,.nsl-low.nsl-hover-reveal:focus-within > .nsl-layer > .nsl-shade { opacity:0!important; }
+.nsl-badges { position:absolute!important; top:6px!important; right:6px!important; display:flex!important; flex-wrap:wrap!important; justify-content:flex-end!important; gap:3px!important; max-width:calc(100% - 12px)!important; pointer-events:auto!important; cursor:help!important; padding:0!important; line-height:1.2!important; border-radius:5px!important; }
+.nsl-badges:focus-visible { outline:2px solid #f2cc7b!important; outline-offset:3px!important; }
+.nsl-chip { display:inline-block!important; color:#f3d18c!important; background:rgba(17,21,28,.96)!important; border:1px solid rgba(232,211,160,.34)!important; border-radius:5px!important; padding:4px 5px!important; font:600 11px/1.25 system-ui,-apple-system,sans-serif!important; white-space:nowrap!important; box-shadow:0 2px 5px #0006!important; text-decoration:none!important; }
+.nsl-tvmaze { color:#a4dbc9!important; border-color:#577b70!important; }
+.nsl-rt,.nsl-metacritic { color:#d3dde8!important; border-color:#4c5d70!important; }
+.nsl-muted { color:#c0c8d1!important; border-color:#525a64!important; font-weight:400!important; }
+.nsl-low .nsl-chip { border-color:#a76d5f!important; }
+@media (prefers-reduced-motion:reduce) { .nsl-shade{transition:none!important} }
