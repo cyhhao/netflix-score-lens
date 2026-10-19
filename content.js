@@ -48,10 +48,15 @@
   const localizeMessage=value=>i18n?.localizeMessage(value)||value;
   const label=source=>t(core.LABELS[source]||source);
   const typeLabel=type=>t(type==='series'?'剧集':'电影');
-  const near=el=>{const r=el.getBoundingClientRect();return r.width>0&&r.height>0&&r.right>0&&r.left<innerWidth&&r.bottom>-100&&r.top<innerHeight+220;};
+  // Notification thumbnails are navigation, not browse cards. Their hidden
+  // popover retains positive rectangles within the viewport; geometry is not visibility.
+  const nonCard=el=>Boolean(el.closest('[data-uia^="navigation+notifications"]'));
+  const hidden=el=>Boolean(el.closest('[hidden]'))||!el.getClientRects().length||getComputedStyle(el).visibility!=='visible';
+  const near=el=>{const r=el.getBoundingClientRect();return r.width>0&&r.height>0&&r.right>0&&r.left<innerWidth&&r.bottom>-100&&r.top<innerHeight+220&&!hidden(el);};
   const nfId=a=>{try{const u=new URL(a.href);return u.searchParams.get('jbv')||u.pathname.match(/\/(?:title|watch)\/(\d+)/)?.[1]||'';}catch{return '';}};
   const statusLabels={pending:'查询中',ambiguous:'待确认',not_found:'未找到',error:'重试',no_rating:'暂无评分'};
   function itemFor(a){
+    if(nonCard(a)||hidden(a))return null;
     const title=(a.getAttribute('aria-label')||a.getAttribute('title')||a.querySelector('img')?.alt||a.querySelector('.fallback-text')?.textContent||'').trim();
     if(!title)return null;
     const id=nfId(a),m=state.metadata[id]||{};
@@ -77,7 +82,7 @@
   }
   function render(a,record){
     if(stopped||!a.isConnected)return;
-    if(!state.settings?.enabled){removeDecoration(a);return;}
+    if(!state.settings?.enabled||hidden(a)){removeDecoration(a);return;}
     const r=state.results.get(record.item.key),pending=state.pending.has(record.item.key);
     const signature=JSON.stringify([record.item.key,r,state.settings,pending]);
     if(a.dataset.nslRender===signature)return;
@@ -151,7 +156,7 @@
     state.url=location.href;
     for(const [a]of state.records)if(!a.isConnected||!a.matches(SELECTOR)||!itemFor(a)){removeDecoration(a);state.records.delete(a);intersection.unobserve(a);}
     if(location.pathname.startsWith('/watch/')){for(const [a]of state.records)removeDecoration(a);host.hidden=true;return;}host.hidden=false;
-    const links=[...document.querySelectorAll(SELECTOR)].filter(a=>a.querySelector('img')||a.matches('[data-uia=standard-card]'));
+    const links=[...document.querySelectorAll(SELECTOR)].filter(a=>!nonCard(a)&&(a.querySelector('img')||a.matches('[data-uia=standard-card]')));
     const metadataIds=[...new Set(links.filter(near).map(nfId).filter(id=>id&&!state.metadata[id]?.year))];
     for(let i=0;i<metadataIds.length;i+=200)window.dispatchEvent(new CustomEvent('nsl:metadata-request',{detail:JSON.stringify(metadataIds.slice(i,i+200))}));
     for(const a of links){
@@ -235,7 +240,7 @@
     chrome.runtime.onMessage.addListener(onMessage);window.addEventListener('nsl:metadata-response',metadataResponse);
     createHud();intersection=new IntersectionObserver(schedule,{rootMargin:'220px 0px'});
     observer=new MutationObserver(records=>{if(records.some(r=>{const e=r.target.nodeType===1?r.target:r.target.parentElement;return !e?.closest('.nsl-layer,#nsl-root') && !(r.type==='childList'&&[...r.addedNodes,...r.removedNodes].every(n=>n.nodeType===1&&n.matches?.('.nsl-layer,#nsl-root')));} ))schedule();});
-    observer.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['href','aria-label','title','alt','src']});
+    observer.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['href','aria-label','title','alt','src','hidden']});
     window.addEventListener('scroll',schedule,{passive:true});window.addEventListener('resize',schedule,{passive:true});window.addEventListener('online',online);heartbeat=setInterval(schedule,3000);
     state.ready=true;window.__scoreLensInstance=instance;scan();
   })().catch(unexpected);
