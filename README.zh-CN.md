@@ -7,7 +7,7 @@
 
 在 Netflix 卡片上显示评分，用可调遮罩弱化低分作品，并在独立评分库中浏览本机已经匹配的作品。
 
-独立 Chrome MV3 扩展：评分角标、低分弱化、保守匹配与本机评分库。当前插件界面为简体中文，匹配支持本地化标题。本项目与 Netflix 或任何评分提供方无关联。
+独立 Chrome MV3 扩展：评分角标、低分弱化、保守匹配与本机评分库。插件默认跟随浏览器语言（English 或简体中文），也可在弹窗和评分库中手动切换；匹配支持本地化标题。本项目与 Netflix 或任何评分提供方无关联。
 
 > **当前状态：开源、本地加载可用；尚未在 Chrome Web Store 上架。**
 > 商店材料及专用 ZIP 已准备，但凭据/历史缓存的静态加密、数据披露及第三方数据使用范围仍需完成发布审查，不能把 ZIP 生成成功当成审核通过。见 [上架清单](docs/chrome-web-store.md)。
@@ -20,19 +20,19 @@
 
 来源分别标注，低于阈值的作品变暗，没有评分的作品保持原样。下图的角标和遮罩由插件真实内容脚本渲染。
 
-![真实评分角标和低分遮罩，在明确标注的演示卡片页上展示](docs/screenshots/ratings-overlay.png)
+![真实评分角标和低分遮罩，在明确标注的演示卡片页上展示](docs/screenshots/ratings-overlay.zh-CN.png)
 
 ### 不打开 Netflix，也能浏览本机评分库
 
 搜索已经匹配的作品，切换评分来源，排序、分组，并查看匹配依据与来源资料。
 
-![独立评分库：搜索、筛选、排序及明确标注的演示作品](docs/screenshots/library.png)
+![独立评分库：搜索、筛选、排序及明确标注的演示作品](docs/screenshots/library.zh-CN.png)
 
 ### 在弹窗里随手调整
 
 评分阈值、遮罩强度、悬停恢复都可直接控制，设置即时作用于 Netflix，无需刷新页面。
 
-<img src="docs/screenshots/settings.png" alt="真实插件弹窗：演示标签页状态、评分阈值、遮罩和悬停恢复设置" width="400">
+<img src="docs/screenshots/settings.zh-CN.png" alt="真实插件弹窗：演示标签页状态、评分阈值、遮罩和悬停恢复设置" width="400">
 
 ## 安装
 
@@ -104,7 +104,8 @@ npm run test:live
 PROVIDERS_LIVE=1 node --test tests/providers.test.mjs
 
 # 用隔离浏览器和演示数据重新生成 README 截图
-node scripts/readme-screenshots.mjs
+node scripts/readme-screenshots.mjs en
+node scripts/readme-screenshots.mjs zh-CN
 ```
 
 CI 默认跑单元测试和隔离真实扩展测试，不把第三方 API 的可用性当作每次 PR 的确定性要求。

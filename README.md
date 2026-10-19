@@ -13,7 +13,7 @@ A Chrome extension that adds rating badges to Netflix cards, dims titles below y
 
 > **Status:** Open source and available for manual unpacked installation. **Not yet listed in the Chrome Web Store.** Store materials are prepared, but storage security, data disclosures, provider permissions and final acceptance remain release gates. See the [store checklist](docs/chrome-web-store.md) (Chinese).
 >
-> The extension's current UI is **Simplified Chinese**. This English README does not imply an English-localized app. The project is independent and not affiliated with Netflix or any rating provider.
+> The extension follows the browser's preferred language by default (English or Simplified Chinese) and keeps a manual language selector in the popup and local library. The project is independent and not affiliated with Netflix or any rating provider.
 
 ## Product screenshots
 
@@ -23,19 +23,19 @@ These captures use the **real extension UI with clearly labelled synthetic title
 
 Keep sources distinct, dim scores below your threshold, and leave titles with missing ratings untouched. The badges and dimming below are produced by the actual content script.
 
-![Actual Score Lens badges and low-score dimming on a labelled demonstration card page](docs/screenshots/ratings-overlay.png)
+![Actual Score Lens badges and low-score dimming on a labelled demonstration card page](docs/screenshots/ratings-overlay.en.png)
 
 ### A local library you can open independently
 
 Search previously matched titles, select a rating source, sort or group results, and inspect matching details without keeping a Netflix tab open.
 
-![Score Lens independent local library with search, filters, sorting and labelled demo titles](docs/screenshots/library.png)
+![Score Lens independent local library with search, filters, sorting and labelled demo titles](docs/screenshots/library.en.png)
 
 ### Controls within reach
 
 Change the score threshold, dimming strength and hover-to-reveal behavior from the popup. Settings take effect on Netflix without reloading the page.
 
-<img src="docs/screenshots/settings.png" alt="Actual Score Lens popup showing threshold, dimming and hover controls for the demo tab" width="400">
+<img src="docs/screenshots/settings.en.png" alt="Actual Score Lens popup showing threshold, dimming and hover controls for the demo tab" width="400">
 
 ## Features
 
@@ -108,7 +108,8 @@ npm run test:live
 PROVIDERS_LIVE=1 node --test tests/providers.test.mjs
 
 # Recreate the README captures using only synthetic data and a disposable browser.
-node scripts/readme-screenshots.mjs
+node scripts/readme-screenshots.mjs en
+node scripts/readme-screenshots.mjs zh-CN
 ```
 
 CI runs unit tests and isolated real-extension checks; third-party uptime is not a deterministic PR requirement. Demo/test data never enters the installation ZIP. [Testing boundaries](docs/testing.md) distinguish fixtures, live API checks and actual Netflix acceptance.

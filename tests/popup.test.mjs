@@ -1,8 +1,11 @@
 // Run: node --test tests/popup.test.mjs
 // Pure popup logic only; DOM behaviour is exercised in a real browser.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { readFileSync } from "node:fs";
+import { after, before, describe, it } from "node:test";
 
+import { localizeMessage, setLanguage, t } from "../i18n.js";
+import { POPUP_MESSAGES } from "../i18n-popup.js";
 import {
   canonicalRatingKey,
   classifyUrl,
@@ -26,6 +29,9 @@ import {
   scaleOf,
   stepOf
 } from "../popup.js";
+
+// Legacy expectations are Chinese; pin the locale instead of inheriting the machine's.
+before(() => setLanguage("zh-CN"));
 
 describe("threshold scales", () => {
   it("uses 0..10 for auto/imdb/tvmaze and 0..100 for rt/metacritic", () => {
@@ -255,5 +261,108 @@ describe("provider health", () => {
     assert.equal(relativeTime(now - 5 * 60_000, now), "5 分钟前");
     assert.equal(relativeTime(new Date(now - 3 * 3600_000).toISOString(), now), "3 小时前");
     assert.equal(relativeTime("garbage", now), "");
+  });
+});
+
+describe("English and browser-language UI", () => {
+  after(() => setLanguage("zh-CN"));
+
+  it("follows the browser language in auto mode and falls back to English", () => {
+    assert.equal(setLanguage("auto", ["zh-TW", "en-US"]), "zh-CN");
+    assert.equal(describeHealth("ok").label, "正常");
+    assert.equal(setLanguage("auto", ["fr-FR"]), "en");
+    assert.equal(describeHealth("ok").label, "OK");
+    assert.equal(setLanguage("auto", ["en-GB"]), "en");
+    assert.equal(setLanguage("zh-CN", ["en-US"]), "zh-CN");
+  });
+
+  it("renders labels, confidence and health in English", () => {
+    setLanguage("en");
+    assert.equal(confidenceLabel("high"), "High confidence");
+    assert.equal(confidenceLabel("localized"), "Alias match; please verify");
+    assert.equal(confidenceLabel(0.82), "Confidence 82%");
+    assert.deepEqual(describeHealth("not_configured"), { tone: "not_configured", label: "No key" });
+    assert.deepEqual(describeHealth("error", false), { tone: "offline", label: "Offline" });
+    assert.equal(describeHealth("mystery").label, "mystery");
+  });
+
+  it("translates app labels but keeps provider identities", () => {
+    setLanguage("en");
+    assert.deepEqual(providerInfo("Search"), { label: "Title search", note: "Cinemeta / IMDb" });
+    assert.deepEqual(providerInfo("Cinemeta"), { label: "IMDb", note: "via Cinemeta mirror" });
+    assert.equal(providerInfo("rt").label, "Rotten Tomatoes");
+    assert.equal(providerInfo("OMDb").note, "Rotten Tomatoes / Metacritic");
+    assert.equal(providerInfo("Something").label, "Something");
+    assert.equal(providerInfo("").label, "Unknown source");
+  });
+
+  it("describes relative times in English", () => {
+    setLanguage("en");
+    const now = Date.parse("2026-10-19T05:00:00Z");
+    assert.equal(relativeTime(now - 10_000, now), "Just now");
+    assert.equal(relativeTime(now - 5 * 60_000, now), "5 min ago");
+    assert.equal(relativeTime(now - 3 * 3600_000, now), "3 h ago");
+    assert.match(relativeTime(now - 3 * 86400_000, now), /^Oct 1[56]$/);
+  });
+
+  it("localizes backend messages without touching titles", () => {
+    setLanguage("en");
+    assert.equal(localizeMessage("你已确认此匹配"), "You confirmed this match");
+    assert.equal(localizeMessage("请求成功"), "Request succeeded");
+    assert.equal(localizeMessage("扩展后台没有响应，请稍后重试"), "The extension background didn't respond; try again shortly");
+    assert.equal(localizeMessage("黑暗荣耀"), "黑暗荣耀");
+    assert.equal(t("已绑定为「{title}」，页面评分正在刷新。", { title: "黑暗荣耀 (2022)" }), "Bound to “黑暗荣耀 (2022)”; ratings on the page are refreshing.");
+  });
+});
+
+// Every Chinese string the popup can show must be a catalog key with an English
+// translation, so untranslated text cannot slip in unnoticed.
+describe("catalog coverage", () => {
+  const CJK = /[\u3000-\u303f\u3400-\u9fff\uff00-\uffef]/;
+  const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+  // Native language names are deliberately shown untranslated.
+  const NATIVE = new Set(["简体中文"]);
+
+  after(() => setLanguage("zh-CN"));
+
+  function assertTranslated(key, where) {
+    setLanguage("en");
+    const english = t(key);
+    assert.notEqual(english, key, `${where}: no English for "${key}"`);
+    assert.doesNotMatch(english, CJK, `${where}: English for "${key}" still has Chinese`);
+    for (const token of key.match(/\{\w+\}/g) || []) assert.ok(english.includes(token), `${where}: "${key}" lost ${token}`);
+  }
+
+  it("translates every Chinese string literal in popup.js", () => {
+    const source = read("popup.js").replace(/^\s*\/\/.*$/gm, "");
+    const literals = [...source.matchAll(/"((?:[^"\\\n]|\\.)*)"/g)].map((m) => m[1]).filter((text) => CJK.test(text));
+    assert.ok(literals.length > 100, "literal scan found too little");
+    for (const literal of literals) assertTranslated(literal, "popup.js");
+    assert.deepEqual([...source.matchAll(/[`'][^`'\n]*[\u3400-\u9fff][^`'\n]*[`']/g)].map((m) => m[0]), [], "Chinese outside double-quoted catalog keys");
+  });
+
+  it("annotates every Chinese text and attribute in popup.html", () => {
+    const html = read("popup.html").replace(/<!--[\s\S]*?-->/g, "");
+    for (const [, tag, attrs, text] of html.matchAll(/<([a-z][\w-]*)([^>]*)>([^<]*)/gi)) {
+      const label = text.trim();
+      if (label && CJK.test(label) && !NATIVE.has(label)) {
+        assert.equal(attrs.match(/data-i18n="([^"]*)"/)?.[1], label, `<${tag}> text "${label}" is not annotated`);
+      }
+      for (const [, name, value] of attrs.matchAll(/\s(title|placeholder|aria-label)="([^"]*)"/g)) {
+        if (CJK.test(value)) assert.equal(attrs.match(new RegExp(`data-i18n-${name}="([^"]*)"`))?.[1], value, `<${tag} ${name}="${value}"> is not annotated`);
+      }
+    }
+    for (const [, text] of html.matchAll(/<\/[a-z][\w-]*>([^<]*)/gi)) {
+      assert.doesNotMatch(text, CJK, `loose text "${text.trim()}" after a closing tag`);
+    }
+    for (const [, key] of html.matchAll(/data-i18n(?:-title|-placeholder|-aria-label)?="([^"]*)"/g)) assertTranslated(key, "popup.html");
+  });
+
+  it("keeps CSS free of generated Chinese text", () => {
+    assert.doesNotMatch(read("popup.css"), CJK);
+  });
+
+  it("has English for every popup catalog entry", () => {
+    for (const key of Object.keys(POPUP_MESSAGES)) assertTranslated(key, "i18n-popup.js");
   });
 });

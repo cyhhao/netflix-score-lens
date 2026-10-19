@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "minimum_chrome_version": "120",
   "name": "Netflix Score Lens",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Netflix 评分镜片：免费 IMDb/TVmaze 评分、可选 OMDb、低分遮罩、匹配纠错与独立评分库。",
   "permissions": ["storage", "activeTab"],
   "host_permissions": [
@@ -20,5 +20,5 @@
     {"matches":["https://www.netflix.com/*"],"js":["bridge.js"],"world":"MAIN","run_at":"document_start"},
     {"matches":["https://www.netflix.com/*"],"js":["content.js"],"css":["content.css"],"run_at":"document_idle"}
   ],
-  "web_accessible_resources": [{"resources":["core.js"],"matches":["https://www.netflix.com/*"]}]
+  "web_accessible_resources": [{"resources":["core.js","i18n.js","i18n-content.js"],"matches":["https://www.netflix.com/*"]}]
 }

@@ -2,8 +2,12 @@
   if(window.__scoreLensInstance){window.__scoreLensInstance.scan();return;}
   const SELECTOR='a[data-uia="standard-card"],a[href*="?jbv="],a[href*="&jbv="],a[href*="/title/"],.title-card a[href*="/watch/"]';
   const state={settings:null,records:new Map(),results:new Map(),pending:new Set(),failAt:new Map(),metadata:{},revisions:new Map(),epoch:0,url:location.href,ready:false};
-  let core,scanTimer,activeLookups=0,host,panel,stats,btn,observer,intersection,heartbeat;
+  let core,i18n,scanTimer,activeLookups=0,host,panel,stats,btn,observer,intersection,heartbeat;
   const send=m=>chrome.runtime.sendMessage(m);
+  const t=(key,params)=>i18n?.t(key,params)||String(key);
+  const localizeMessage=value=>i18n?.localizeMessage(value)||value;
+  const label=source=>t(core.LABELS[source]||source);
+  const typeLabel=type=>t(type==='series'?'剧集':'电影');
   const near=el=>{const r=el.getBoundingClientRect();return r.width>0&&r.height>0&&r.right>0&&r.left<innerWidth&&r.bottom>-100&&r.top<innerHeight+220;};
   const nfId=a=>{try{const u=new URL(a.href);return u.searchParams.get('jbv')||u.pathname.match(/\/(?:title|watch)\/(\d+)/)?.[1]||'';}catch{return '';}};
   const statusLabels={pending:'查询中',ambiguous:'待确认',not_found:'未找到',error:'重试',no_rating:'暂无评分'};
@@ -43,17 +47,17 @@
     if(ratings.length){
       for(const [source,rating] of ratings){
         const chip=document.createElement('span');chip.className=`nsl-chip nsl-${source}`;
-        chip.textContent=`${source==='metacritic'?'MC':source==='rt'?'RT':core.LABELS[source]} ${core.formatRating({source,...rating})}`;
+        chip.textContent=`${source==='metacritic'?'MC':source==='rt'?'RT':label(source)} ${core.formatRating({source,...rating})}`;
         badge.append(chip);
       }
     }else{
-      const chip=document.createElement('span');chip.className='nsl-chip nsl-muted';chip.textContent=statusLabels[pending?'pending':r?.status]||'等候查询';badge.append(chip);
+      const chip=document.createElement('span');chip.className='nsl-chip nsl-muted';chip.textContent=t(statusLabels[pending?'pending':r?.status]||'等候查询');badge.append(chip);
     }
     const score=core.ratingChoice(r,state.settings),low=core.isLow(r,state.settings);
     a.classList.toggle('nsl-low',low);a.classList.toggle('nsl-hover-reveal',state.settings.revealOnHover);
     a.style.setProperty('--nsl-dim',String(state.settings.dimOpacity));
-    badge.setAttribute('aria-label',`${record.item.title}：${badge.textContent}。点击查看匹配、来源及纠错方式`);
-    badge.title=[record.item.title,r?.title&&`${r.title} (${r.year||'年份未知'})`,r?.matchReason,low?`低于 ${state.settings.minScore}${state.settings.revealOnHover?'，悬停可恢复亮度':''}`:!score&&r?.status==='ok'?'所选评分源暂无数据，不会变暗':'','点击评分查看来源；插件弹窗可纠错'].filter(Boolean).join('\n');
+    badge.setAttribute('aria-label',t('{title}：{badge}。点击查看匹配、来源及纠错方式',{title:record.item.title,badge:badge.textContent}));
+    badge.title=[record.item.title,r?.title&&`${r.title} (${r.year||t('未知年份')})`,r?.matchReason&&localizeMessage(r.matchReason),low?t('低于 {score}{reveal}',{score:state.settings.minScore,reveal:state.settings.revealOnHover?t('，悬停可恢复亮度'):''}):!score&&r?.status==='ok'?t('所选评分源暂无数据，不会变暗'):t('点击评分查看来源；插件弹窗可纠错')].filter(Boolean).join('\n');
   }
   function summary(){
     const items=new Map();let visible=0;
@@ -62,24 +66,34 @@
     for(const [key]of items){const r=state.results.get(key);if(state.pending.has(key))s.pending++;else if(r?.status==='ok')s.matched++;else if(r?.status==='ambiguous')s.ambiguous++;else if(r?.status==='error')s.errors++;else if(r)s.unmatched++;}
     return {summary:s,items:[...items.values()].map(item=>({item,result:state.results.get(item.key)||{status:state.pending.has(item.key)?'pending':'waiting',ratings:{}}})),url:location.href,version:chrome.runtime.getManifest().version};
   }
-  function updateStats(){if(!stats)return;const s=summary().summary;stats.textContent=!state.settings?.enabled?'已暂停':s.pending?`${s.matched} 已匹配 · ${s.pending} 查询中`:`${s.matched} 已匹配${s.ambiguous?' · '+s.ambiguous+' 待确认':''}${s.errors?' · 请求失败':''}`;}
+  function updateStats(){if(!stats)return;const s=summary().summary;stats.textContent=!state.settings?.enabled?t('已暂停'):s.pending?t('{matched} 已匹配 · {pending} 查询中',{matched:s.matched,pending:s.pending}):`${t('{matched} 已匹配',{matched:s.matched})}${s.ambiguous?t(' · {ambiguous} 待确认',{ambiguous:s.ambiguous}):''}${s.errors?t(' · 请求失败'):''}`;}
   function createHud(){
     host=document.createElement('div');host.id='nsl-root';const shadow=host.attachShadow({mode:'open'});
     const style=document.createElement('style');style.textContent=`:host{all:initial;position:fixed;bottom:20px;right:20px;z-index:2147483000;font-family:system-ui;color:#eee}button{cursor:pointer;font:inherit}#toggle{border:1px solid #49525d;border-radius:20px;background:#161b23ed;color:#dfe7ef;padding:9px 13px;font-size:12px;box-shadow:0 3px 16px #0006}b{color:#f4ce79}#panel{width:320px;max-height:65vh;overflow:auto;background:#151a22;color:#eee;border:1px solid #48505e;border-radius:14px;padding:16px;box-shadow:0 10px 40px #0009;margin-bottom:8px;font-size:13px;line-height:1.6}#panel[hidden]{display:none}h3{margin:0 0 8px;font-size:16px}p{margin:6px 0;color:#b7c2d1}a{color:#f4ce79}#close{float:right;border:0;background:none;color:#aaa;font-size:18px}li{margin:6px 0}small{color:#9eabba}.muted{color:#91a1b4}`;
-    panel=document.createElement('section');panel.id='panel';panel.hidden=true;panel.setAttribute('aria-label','评分详情');
-    btn=document.createElement('button');btn.id='toggle';btn.type='button';btn.setAttribute('aria-label','打开评分镜片状态');
-    const brand=document.createElement('b');brand.textContent='◈ 评分镜片 ';stats=document.createElement('span');btn.append(brand,stats);
+    panel=document.createElement('section');panel.id='panel';panel.hidden=true;panel.setAttribute('aria-label',t('评分详情'));
+    btn=document.createElement('button');btn.id='toggle';btn.type='button';btn.setAttribute('aria-label',t('打开评分镜片状态'));
+    const brand=document.createElement('b');brand.textContent=t('◈ 评分镜片 ');stats=document.createElement('span');btn.append(brand,stats);
     btn.onclick=()=>{if(!panel.hidden){panel.hidden=true;return;}showStatus();};
     shadow.append(style,panel,btn);document.documentElement.append(host);
     shadow.addEventListener('keydown',e=>{if(e.key==='Escape'){panel.hidden=true;btn.focus();}});
   }
-  function basePanel(title){panel.replaceChildren();panel.hidden=false;const close=document.createElement('button');close.id='close';close.textContent='×';close.setAttribute('aria-label','关闭详情');close.onclick=()=>{panel.hidden=true;btn.focus();};const h=document.createElement('h3');h.textContent=title;panel.append(close,h);}
+  function basePanel(title){panel.replaceChildren();panel.hidden=false;const close=document.createElement('button');close.id='close';close.textContent='×';close.setAttribute('aria-label',t('关闭详情'));close.onclick=()=>{panel.hidden=true;btn.focus();};const h=document.createElement('h3');h.textContent=title;panel.append(close,h);}
   function p(text){const e=document.createElement('p');e.textContent=text;panel.append(e);}
-  function showStatus(){const s=summary().summary;basePanel('评分镜片');p(`识别 ${s.discovered} 部 · 匹配 ${s.matched} 部 · 待确认 ${s.ambiguous} 部`);p('仅查询视口附近作品，滚动页面自动继续。点击卡片评分可看来源。');p('打开工具栏「Netflix Score Lens」可调阈值、检查评分源、手动修正匹配。');if(!s.discovered)p('未识别到卡片：请进入已登录的 Netflix 首页、电影、节目或搜索页。');}
-  function showDetail(item){const r=state.results.get(item.key);basePanel(item.title);p(r?.title?`${r.title} · ${r.year||'未知年份'} · ${r.type==='series'?'剧集':'电影'}`:statusLabels[r?.status]||'等待查询');if(r?.matchReason)p(r.matchReason);if(r?.warning)p(r.warning);if(r?.status==='error'){const retry=document.createElement('button');retry.textContent='重新查询';retry.onclick=()=>{state.failAt.delete(item.key);panel.hidden=true;schedule();};panel.append(retry);}for(const [source,rating]of Object.entries(r?.ratings||{})){
-    let url;try{url=new URL(rating.url);}catch{continue;}if(!['www.imdb.com','www.tvmaze.com','www.rottentomatoes.com','www.metacritic.com'].includes(url.hostname)||url.protocol!=='https:')continue;
-    const row=document.createElement('p'),a=document.createElement('a');a.href=url.href;a.target='_blank';a.rel='noopener noreferrer';a.textContent=`${core.LABELS[source]} ${core.formatRating({source,...rating})}`;row.append(a,document.createTextNode(` · 来源 ${rating.provider}`));panel.append(row);
-  }if(r?.fetchedAt)p(`查询时间：${new Date(r.fetchedAt).toLocaleString()}`);p('IMDb 为 Cinemeta 镜像或 OMDb 汇总；TVmaze 是独立评分，不是 IMDb。');p('匹配不对？打开插件弹窗 → 作品 → 点击该作品修正匹配。未确认和无评分作品不会变暗。');}
+  function showStatus(){panel.dataset.view='status';delete panel.dataset.itemKey;const s=summary().summary;basePanel(t('评分镜片'));p(t('识别 {discovered} 部 · 匹配 {matched} 部 · 待确认 {ambiguous} 部',{discovered:s.discovered,matched:s.matched,ambiguous:s.ambiguous}));p(t('仅查询视口附近作品，滚动页面自动继续。点击卡片评分可看来源。'));p(t('打开工具栏「Netflix Score Lens」可调阈值、检查评分源、手动修正匹配。'));if(!s.discovered)p(t('未识别到卡片：请进入已登录的 Netflix 首页、电影、节目或搜索页。'));}
+  function showDetail(item){
+    panel.dataset.view='detail';panel.dataset.itemKey=item.key;
+    const r=state.results.get(item.key);basePanel(item.title);
+    p(r?.title?`${r.title} · ${r.year||t('未知年份')} · ${typeLabel(r.type)}`:t(statusLabels[r?.status]||'等待查询'));
+    if(r?.matchReason)p(localizeMessage(r.matchReason));if(r?.warning)p(localizeMessage(r.warning));
+    if(r?.status==='error'){const retry=document.createElement('button');retry.textContent=t('重新查询');retry.onclick=()=>{state.failAt.delete(item.key);panel.hidden=true;schedule();};panel.append(retry);}
+    for(const [source,rating]of Object.entries(r?.ratings||{})){
+      let url;try{url=new URL(rating.url);}catch{continue;}if(!['www.imdb.com','www.tvmaze.com','www.rottentomatoes.com','www.metacritic.com'].includes(url.hostname)||url.protocol!=='https:')continue;
+      const row=document.createElement('p'),a=document.createElement('a');a.href=url.href;a.target='_blank';a.rel='noopener noreferrer';a.textContent=`${source==='metacritic'?'MC':source==='rt'?'RT':label(source)} ${core.formatRating({source,...rating})}`;row.append(a,document.createTextNode(` · ${t('来源')} ${rating.provider}`));panel.append(row);
+    }
+    if(r?.fetchedAt)p(t('查询时间：{date}',{date:i18n.formatDate(r.fetchedAt)}));
+    p(t('IMDb 为 Cinemeta 镜像或 OMDb 汇总；TVmaze 是独立评分，不是 IMDb。'));
+    p(t('匹配不对？打开插件弹窗 → 作品 → 点击该作品修正匹配。未确认和无评分作品不会变暗。'));
+  }
   function scan(){
     if(!state.ready)return;
     state.url=location.href;
@@ -143,18 +157,28 @@
   }
   chrome.runtime.onMessage.addListener((m,_s,reply)=>{
     if(m.type==='GET_PAGE'){reply({ok:true,...summary()});return false;}
-    if(m.type==='CONFIG'){const wasEnabled=state.settings?.enabled;state.settings=core.cleanSettings({...state.settings,...m.settings});if(wasEnabled&&!state.settings.enabled){state.epoch++;state.pending.clear();}for(const[a,r]of state.records)render(a,r);updateStats();schedule();reply({ok:true});return false;}
+    if(m.type==='CONFIG'){
+      const wasEnabled=state.settings?.enabled;
+      state.settings=core.cleanSettings({...state.settings,...m.settings});
+      i18n.setLanguage(state.settings.language);
+      if(wasEnabled&&!state.settings.enabled){state.epoch++;state.pending.clear();}
+      for(const[a,r]of state.records)render(a,r);updateStats();
+      if(!panel.hidden){const key=panel.dataset.itemKey,item=key&&[...state.records.values()].map(r=>r.item).find(x=>x.key===key);if(item)showDetail(item);else showStatus();}
+      schedule();reply({ok:true});return false;
+    }
     if(['RESCAN','RESET'].includes(m.type)){reset(m.type==='RESET'?m.key:undefined);reply({ok:true});return false;}
     return false;
   });
   window.addEventListener('nsl:metadata-response',e=>{try{const data=JSON.parse(e.detail);let changed=false;for(const[id,v]of Object.entries(data))if(/^\d{4,12}$/.test(id)&&v&&['movie','series'].includes(v.type)){const next={year:Number.isInteger(v.year)&&v.year>=1880&&v.year<=2100?v.year:null,type:v.type};if(JSON.stringify(state.metadata[id])!==JSON.stringify(next)){state.metadata[id]=next;changed=true;}}if(changed)schedule();}catch{}});
   (async()=>{
+    i18n=await import(chrome.runtime.getURL('i18n.js'));
+    await import(chrome.runtime.getURL('i18n-content.js'));
     core=await import(chrome.runtime.getURL('core.js'));
-    const r=await send({type:'GET_CONFIG'});if(!r.ok)throw Error('配置读取失败');state.settings=r.settings;
+    const r=await send({type:'GET_CONFIG'});if(!r.ok)throw Error(t('配置读取失败'));state.settings=core.cleanSettings(r.settings);i18n.setLanguage(state.settings.language);
     createHud();intersection=new IntersectionObserver(schedule,{rootMargin:'220px 0px'});
     observer=new MutationObserver(records=>{if(records.some(r=>{const e=r.target.nodeType===1?r.target:r.target.parentElement;return !e?.closest('.nsl-layer,#nsl-root') && !(r.type==='childList'&&[...r.addedNodes,...r.removedNodes].every(n=>n.nodeType===1&&n.matches?.('.nsl-layer,#nsl-root')));} ))schedule();});
     observer.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['href','aria-label','title','alt','src']});
     window.addEventListener('scroll',schedule,{passive:true});window.addEventListener('resize',schedule,{passive:true});window.addEventListener('online',()=>{for(const[key,r]of state.results)if(r.status==='error')state.failAt.delete(key);schedule();});heartbeat=setInterval(schedule,3000);
     state.ready=true;scan();window.__scoreLensInstance={scan};
-  })().catch(()=>{console.warn('Score Lens: 请在扩展管理页重新加载插件，再刷新 Netflix。');});
+  })().catch(()=>{console.warn(`Score Lens: ${t('请在扩展管理页重新加载插件，再刷新 Netflix。')}`);});
 })();

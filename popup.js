@@ -1,5 +1,15 @@
 // Score Lens popup. Talks to the background worker via runtime messages and to
 // the active tab's content script via tabs messages; see CONTRACT.md.
+//
+// UI text is written as canonical Chinese catalog keys (i18n-popup.js) and
+// rendered through t(); backend/cache messages go through localizeMessage().
+// Titles, IDs and provider identities are passed as params, never as keys.
+
+import { formatDate, getLanguage, getLocale, localizeDOM, localizeMessage, setLanguage, t } from "./i18n.js";
+import "./i18n-popup.js";
+
+// A lazily rendered message, so status lines can be redrawn after a language switch.
+const msg = (key, params) => () => t(key, params);
 
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for tests/popup.test.mjs)
@@ -179,31 +189,31 @@ export function filterEntries(entries, filter, query, pinned = null) {
 export function confidenceLabel(confidence) {
   if (confidence === undefined || confidence === null || confidence === "") return "";
   const number = Number(confidence);
-  if (Number.isFinite(number)) return number > 0 ? `置信度 ${Math.round(number <= 1 ? number * 100 : number)}%` : "";
-  return { high: "高置信度", localized: "别名匹配，建议核对", manual: "手动指定", low: "低置信度" }[confidence] || String(confidence);
+  if (Number.isFinite(number)) return number > 0 ? t("置信度 {percent}%", { percent: Math.round(number <= 1 ? number * 100 : number) }) : "";
+  const label = { high: "高置信度", localized: "别名匹配，建议核对", manual: "手动指定", low: "低置信度" }[confidence];
+  return label ? t(label) : String(confidence);
 }
 
 export function relativeTime(at, now = Date.now()) {
   const time = typeof at === "number" ? at : Date.parse(at);
   if (!Number.isFinite(time)) return "";
   const seconds = Math.max(0, Math.round((now - time) / 1000));
-  if (seconds < 45) return "刚刚";
-  if (seconds < 3600) return `${Math.round(seconds / 60)} 分钟前`;
-  if (seconds < 86400) return `${Math.round(seconds / 3600)} 小时前`;
-  const date = new Date(time);
-  return `${date.getMonth() + 1}月${date.getDate()}日`;
+  if (seconds < 45) return t("刚刚");
+  if (seconds < 3600) return t("{count} 分钟前", { count: Math.round(seconds / 60) });
+  if (seconds < 86400) return t("{count} 小时前", { count: Math.round(seconds / 3600) });
+  return formatDate(time, { month: "short", day: "numeric" });
 }
 
-// Maps a provider check/health status to a display tone and Chinese label.
+// Maps a provider check/health status to a display tone and localized label.
 // An error while the device reports offline is shown as offline, not as a provider fault.
 export function describeHealth(status, online = true) {
-  if (status === "ok") return { tone: "ok", label: "正常" };
-  if (status === "not_configured") return { tone: "not_configured", label: "未配置 Key" };
-  if (status === "error") return online ? { tone: "error", label: "请求失败" } : { tone: "offline", label: "设备离线" };
+  if (status === "ok") return { tone: "ok", label: t("正常") };
+  if (status === "not_configured") return { tone: "not_configured", label: t("未配置 Key") };
+  if (status === "error") return online ? { tone: "error", label: t("请求失败") } : { tone: "offline", label: t("设备离线") };
   // Per-request outcomes: the service answered, this title just had no data.
-  if (status === "no_rating" || status === "not_found") return { tone: "ok", label: "可用" };
-  if (status === "checking") return { tone: "checking", label: "验证中…" };
-  return { tone: "warn", label: String(status || "未知") };
+  if (status === "no_rating" || status === "not_found") return { tone: "ok", label: t("可用") };
+  if (status === "checking") return { tone: "checking", label: t("验证中…") };
+  return { tone: "warn", label: status ? String(status) : t("未知") };
 }
 
 const PROVIDERS = {
@@ -218,10 +228,14 @@ const PROVIDERS = {
   metacritic: { label: "Metacritic", note: "OMDb" }
 };
 
+// Unknown provider names are identities and are shown as-is.
 export function providerInfo(name) {
-  return PROVIDERS[String(name || "").toLowerCase().replace(/[^a-z]/g, "")] || { label: String(name || "未知来源"), note: "" };
+  const known = PROVIDERS[String(name || "").toLowerCase().replace(/[^a-z]/g, "")];
+  if (known) return { label: t(known.label), note: t(known.note) };
+  return { label: name ? String(name) : t("未知来源"), note: "" };
 }
 
+// Returns a canonical (Chinese) message; display it with localizeMessage().
 export function friendlyError(message) {
   const text = String(message || "");
   if (/Receiving end does not exist|Could not establish connection/i.test(text)) return "扩展后台暂时无法连接，请重新打开面板";
@@ -230,12 +244,18 @@ export function friendlyError(message) {
   return text || "操作失败";
 }
 
+const errorText = (error) => localizeMessage(error?.message || "操作失败");
+
+function typeLabel(type) {
+  return TYPE_LABEL[type] ? t(TYPE_LABEL[type]) : "";
+}
+
 // ---------------------------------------------------------------------------
 // Runtime
 // ---------------------------------------------------------------------------
 
 const $ = (selector, root = document) => root.querySelector(selector);
-const SETTING_INPUTS = ["enabled", "scoreSource", "minScore", "dimLowScores", "dimOpacity", "revealOnHover", "useOmdb"];
+const SETTING_INPUTS = ["enabled", "scoreSource", "minScore", "dimLowScores", "dimOpacity", "revealOnHover", "useOmdb", "language"];
 const POLL_MS = 1500;
 const UI_POLL_MS = 5000;
 
@@ -258,9 +278,11 @@ const state = {
   removedManual: new Set()
 };
 
-const save = { pending: null, inFlight: false, failed: null, timer: null, clearTimer: null };
+const save = { pending: null, sending: null, inFlight: false, failed: null, timer: null, clearTimer: null, view: { tone: "", text: null } };
 const timers = [];
 const rows = new Map();
+// Status lines currently showing a message; redrawn on a language switch.
+const liveStatus = new Set();
 let ui;
 
 async function callBackground(message) {
@@ -296,50 +318,69 @@ async function callTab(message) {
 
 // ----- operation feedback -------------------------------------------------
 
+// `text` is a render function (see msg) or empty to clear the line.
 function setStatus(node, tone, text) {
   if (!node) return;
   clearTimeout(node._clear);
-  node.textContent = text || "";
+  node._text = text || null;
+  if (text) liveStatus.add(node);
+  else liveStatus.delete(node);
+  node.textContent = text ? text() : "";
   node.className = node.className.replace(/\bis-(pending|success|error)\b/g, "").trim();
   if (tone && text) node.classList.add(`is-${tone}`);
 }
 
 function clearStatusLater(node, ms = 4000) {
   clearTimeout(node._clear);
-  node._clear = setTimeout(() => setStatus(node, "", ""), ms);
+  node._clear = setTimeout(() => setStatus(node, "", null), ms);
 }
 
 function buttonLabel(button) {
   return $(".btn-label", button) || button;
 }
 
+// Button labels carry their catalog key in data-i18n, so localizeDOM keeps
+// busy and confirm labels in the current language.
+function setLabel(button, key) {
+  const node = buttonLabel(button);
+  node.dataset.i18n = key;
+  node.textContent = t(key);
+}
+
+function labelSpan(key) {
+  const span = el("span", "btn-label", t(key));
+  span.dataset.i18n = key;
+  return span;
+}
+
 function setBusy(button, busy, label) {
   if (!button) return;
   if (busy) {
-    button._idleLabel = buttonLabel(button).textContent;
+    button._idleKey = buttonLabel(button).dataset.i18n;
     button.setAttribute("aria-busy", "true");
     button.setAttribute("aria-disabled", "true");
-    if (label) buttonLabel(button).textContent = label;
+    if (label) setLabel(button, label);
   } else {
     button.removeAttribute("aria-busy");
     button.removeAttribute("aria-disabled");
-    if (button._idleLabel !== undefined) buttonLabel(button).textContent = button._idleLabel;
+    if (button._idleKey) setLabel(button, button._idleKey);
   }
 }
 
 const isBusy = (button) => button?.getAttribute("aria-busy") === "true";
 
+// `pending` is a render function; `success(result)` returns one (or nothing).
 async function runOp({ button, status, busyLabel, pending, task, success, clearAfter }) {
   if (isBusy(button)) return null;
   setBusy(button, true, busyLabel);
   setStatus(status, "pending", pending);
   try {
     const result = await task();
-    setStatus(status, "success", typeof success === "function" ? success(result) : success);
+    setStatus(status, "success", success?.(result));
     if (clearAfter) clearStatusLater(status, clearAfter);
     return result;
   } catch (error) {
-    setStatus(status, "error", error?.message || "操作失败");
+    setStatus(status, "error", () => errorText(error));
     return null;
   } finally {
     setBusy(button, false);
@@ -353,13 +394,13 @@ function confirmable(button, confirmLabel, action) {
     clearTimeout(armed);
     armed = null;
     button.classList.remove("is-confirm");
-    if (button._armedFrom !== undefined) buttonLabel(button).textContent = button._armedFrom;
+    if (button._armedFrom) setLabel(button, button._armedFrom);
   };
   button.addEventListener("click", () => {
     if (isBusy(button)) return;
     if (!armed) {
-      button._armedFrom = buttonLabel(button).textContent;
-      buttonLabel(button).textContent = confirmLabel;
+      button._armedFrom = buttonLabel(button).dataset.i18n;
+      setLabel(button, confirmLabel);
       button.classList.add("is-confirm");
       armed = setTimeout(disarm, 4000);
       return;
@@ -374,19 +415,26 @@ function confirmable(button, confirmLabel, action) {
 
 function setSaveState(tone, text) {
   clearTimeout(save.clearTimer);
-  ui.saveState.textContent = text || "";
-  ui.saveState.title = tone === "error" ? text : "";
+  save.view = { tone, text: text || null };
+  renderSaveState();
+  if (tone === "saved") save.clearTimer = setTimeout(() => setSaveState("", null), 2200);
+}
+
+function renderSaveState() {
+  const { tone, text } = save.view;
+  const shown = text ? text() : "";
+  ui.saveState.textContent = shown;
+  ui.saveState.title = tone === "error" ? shown : "";
   ui.saveState.className = `save-state${tone ? ` is-${tone}` : ""}`;
   ui.saveRetry.hidden = tone !== "error";
-  ui.tagline.hidden = Boolean(text);
-  if (tone === "saved") save.clearTimer = setTimeout(() => setSaveState("", ""), 2200);
+  ui.tagline.hidden = Boolean(shown);
 }
 
 function queueSave(patch, { delay = 0 } = {}) {
   save.pending = { ...save.pending, ...patch };
   state.settings = { ...state.settings, ...patch };
   clearTimeout(save.timer);
-  setSaveState("saving", "保存中…");
+  setSaveState("saving", msg("保存中…"));
   if (delay) save.timer = setTimeout(flushSave, delay);
   else flushSave();
 }
@@ -396,6 +444,7 @@ async function flushSave() {
   if (save.inFlight || !save.pending) return;
   const patch = save.pending;
   save.pending = null;
+  save.sending = patch;
   save.inFlight = true;
   try {
     const response = await callBackground({ type: "SAVE_SETTINGS", settings: patch });
@@ -405,16 +454,17 @@ async function flushSave() {
       // The worker may normalize values; reflect what was actually stored.
       state.settings = { ...state.settings, ...response.settings };
       applySettings(state.settings);
-      setSaveState("saved", "已保存");
+      setSaveState("saved", msg("已保存"));
     }
     renderKeyState();
     renderPage();
     renderTitles();
   } catch (error) {
     save.failed = { ...patch, ...save.failed };
-    setSaveState("error", `保存失败：${error.message}`);
+    setSaveState("error", () => t("保存失败：{error}", { error: errorText(error) }));
   } finally {
     save.inFlight = false;
+    save.sending = null;
     if (save.pending) flushSave();
   }
 }
@@ -446,7 +496,7 @@ function renderThreshold() {
   ui.minScoreUnit.textContent = unit;
   ui.minScoreMin.textContent = "0";
   ui.minScoreMax.textContent = String(scaleOf(source));
-  ui.minScore.setAttribute("aria-valuetext", source === "rt" ? `${value}%` : `${value} 分，满分 ${scaleOf(source)}`);
+  ui.minScore.setAttribute("aria-valuetext", source === "rt" ? `${value}%` : t("{value} 分，满分 {scale}", { value, scale: scaleOf(source) }));
   setRangeFill(ui.minScore);
   renderPreview();
 }
@@ -454,7 +504,7 @@ function renderThreshold() {
 function renderOpacity() {
   const pct = Math.round(Number(ui.dimOpacity.value) * 100);
   ui.dimOpacityOut.textContent = `${pct}%`;
-  ui.dimOpacity.setAttribute("aria-valuetext", `遮罩 ${pct}%`);
+  ui.dimOpacity.setAttribute("aria-valuetext", t("遮罩 {percent}%", { percent: pct }));
   setRangeFill(ui.dimOpacity);
   renderPreview();
 }
@@ -473,10 +523,10 @@ function renderPreview() {
   ui.preview.style.setProperty("--dim", ui.dimOpacity.value);
   ui.preview.classList.toggle("is-dim-off", !dimOn);
   ui.preview.classList.toggle("is-reveal", ui.revealOnHover.checked);
-  ui.previewCaption.textContent = !ui.dimLowScores.checked ? "已关闭弱化，低分卡片保持原样"
+  ui.previewCaption.textContent = t(!ui.dimLowScores.checked ? "已关闭弱化，低分卡片保持原样"
     : !hasLow ? "阈值为 0，不会弱化任何作品"
       : ui.revealOnHover.checked ? "预览 · 把鼠标移到右侧低分卡片上试试"
-        : "预览 · 右侧为低于阈值的卡片";
+        : "预览 · 右侧为低于阈值的卡片");
 }
 
 function renderDimOptions() {
@@ -490,13 +540,14 @@ function renderSourceHint() {
   const source = state.settings?.scoreSource;
   const needsOmdb = source === "rt" || source === "metacritic";
   let text = "";
-  if (needsOmdb && !state.hasApiKey) text = "烂番茄 / Metacritic 评分需要 OMDb Key，未配置时不会弱化任何作品。";
-  else if (needsOmdb && state.settings.providerMode === "free") text = "已关闭 OMDb 补充，烂番茄 / Metacritic 不会获取。";
+  if (needsOmdb && !state.hasApiKey) text = t("烂番茄 / Metacritic 评分需要 OMDb Key，未配置时不会弱化任何作品。");
+  else if (needsOmdb && state.settings.providerMode === "free") text = t("已关闭 OMDb 补充，烂番茄 / Metacritic 不会获取。");
   ui.sourceHint.hidden = !text;
   ui.sourceHintText.textContent = text;
 }
 
 function applySettings(settings) {
+  applyLanguage(settings.language);
   ui.enabled.checked = settings.enabled !== false;
   ui.scoreSource.value = SOURCES[settings.scoreSource] ? settings.scoreSource : "auto";
   configureThresholdRange(ui.scoreSource.value, settings.minScore ?? convertThreshold(7, "auto", ui.scoreSource.value));
@@ -547,6 +598,11 @@ function bindSettings() {
     queueSave({ providerMode: ui.useOmdb.checked ? "auto" : "free" });
     renderSourceHint();
   });
+  // Language is an ordinary setting: it is saved, but never clears the cache or looks anything up.
+  ui.language.addEventListener("change", () => {
+    applyLanguage(ui.language.value);
+    queueSave({ language: getLanguage() });
+  });
   ui.saveRetry.addEventListener("click", retrySave);
   ui.sourceHintGo.addEventListener("click", () => {
     selectTab("sources");
@@ -555,21 +611,74 @@ function bindSettings() {
   });
 }
 
+// ----- language -------------------------------------------------------------
+
+function applyLanguage(preference) {
+  const before = getLocale();
+  setLanguage(preference || "auto");
+  ui.language.value = getLanguage();
+  if (getLocale() !== before) relocalize();
+}
+
+// Settings written by another extension page (e.g. the library's language
+// picker). Values this popup has not finished saving keep precedence.
+function onStoredSettings(stored) {
+  if (!state.settings || !stored || typeof stored !== "object") return;
+  const next = { ...state.settings, ...stored, ...save.sending, ...save.pending };
+  const changed = Object.keys(next).filter((key) => next[key] !== state.settings[key]);
+  if (!changed.length) return;
+  state.settings = next;
+  if (changed.every((key) => key === "language")) {
+    applyLanguage(next.language);
+    return;
+  }
+  applySettings(next);
+  renderPage();
+  renderTitles();
+}
+
+const focusables = (root) => [...root.querySelectorAll("a[href], button, input, select")];
+
+// Redraws all text in the current locale in place: inputs, the open detail,
+// search results, filters, the active tab and focus are kept.
+function relocalize() {
+  if (!ui) return;
+  const active = document.activeElement;
+  const openRow = [...rows.values()].find((row) => row.detail.contains(active));
+  const focusIndex = openRow ? focusables(openRow.detail).indexOf(active) : -1;
+
+  localizeDOM(document);
+  for (const row of rows.values()) localizeDOM(row.li);
+  for (const node of liveStatus) node.textContent = node._text();
+  renderSaveState();
+  renderThreshold();
+  renderOpacity();
+  renderSourceHint();
+  renderKeyState();
+  renderCache();
+  renderHealth();
+  renderPage();
+  renderTitles();
+  for (const row of rows.values()) if (row.found) renderFound(row);
+
+  if (openRow && !openRow.detail.contains(document.activeElement)) focusables(openRow.detail)[focusIndex]?.focus();
+}
+
 // ----- UI data (GET_UI) ---------------------------------------------------
 
 async function loadUi() {
-  setSaveState("saving", "读取设置…");
+  setSaveState("saving", msg("读取设置…"));
   try {
     const response = await callBackground({ type: "GET_UI" });
     state.settings = { ...response.settings };
     applyUiMeta(response);
     applySettings(state.settings);
     setSettingsDisabled(false);
-    setSaveState("", "");
+    setSaveState("", null);
     renderPage();
     renderTitles();
   } catch (error) {
-    setSaveState("error", `读取设置失败：${error.message}`);
+    setSaveState("error", () => t("读取设置失败：{error}", { error: errorText(error) }));
   }
 }
 
@@ -641,29 +750,30 @@ function pageView() {
   const page = state.page;
   const enabled = state.settings?.enabled !== false;
   switch (page.kind) {
-    case "loading": return { kind: "loading", title: "正在连接当前标签页…" };
-    case "no_tab": return { kind: "warn", title: "没有找到当前标签页", hint: "切换到 Netflix 标签页后再打开此面板。" };
-    case "restricted": return { kind: "warn", title: "此页面不支持扩展", hint: "浏览器内置页面无法运行扩展。设置仍会自动保存。", action: "open" };
-    case "not_netflix": return { kind: "warn", title: "当前不是 Netflix 页面", hint: "设置会自动保存，打开 Netflix 后立即生效。", action: "open" };
-    case "not_loaded": return { kind: "warn", title: "评分镜片尚未在此页运行", hint: "安装或更新扩展后，需要刷新一次 Netflix 页面。", action: "reload" };
-    case "unknown": return { kind: "warn", title: "当前页没有运行评分镜片", hint: "如果这是 Netflix 页面，刷新后再试。", action: "reload" };
-    case "page_error": return { kind: "error", title: "读取页面状态失败", hint: page.message, rescan: true };
+    case "loading": return { kind: "loading", title: t("正在连接当前标签页…") };
+    case "no_tab": return { kind: "warn", title: t("没有找到当前标签页"), hint: t("切换到 Netflix 标签页后再打开此面板。") };
+    case "restricted": return { kind: "warn", title: t("此页面不支持扩展"), hint: t("浏览器内置页面无法运行扩展。设置仍会自动保存。"), action: "open" };
+    case "not_netflix": return { kind: "warn", title: t("当前不是 Netflix 页面"), hint: t("设置会自动保存，打开 Netflix 后立即生效。"), action: "open" };
+    case "not_loaded": return { kind: "warn", title: t("评分镜片尚未在此页运行"), hint: t("安装或更新扩展后，需要刷新一次 Netflix 页面。"), action: "reload" };
+    case "unknown": return { kind: "warn", title: t("当前页没有运行评分镜片"), hint: t("如果这是 Netflix 页面，刷新后再试。"), action: "reload" };
+    case "page_error": return { kind: "error", title: t("读取页面状态失败"), hint: localizeMessage(page.message), rescan: true };
     default: break;
   }
   const { summary = {}, version } = page.data;
   const progress = pageProgress(summary);
   const manifestVersion = chrome.runtime.getManifest().version;
-  const stale = version && version !== manifestVersion ? `页面脚本为 v${version}，刷新页面以使用 v${manifestVersion}。` : "";
-  const where = page.netflix ? "" : "测试页面 · ";
-  if (!enabled) return { kind: "paused", title: "已暂停", hint: stale || "页面上的评分和遮罩已隐藏，打开右上角开关即可恢复。", action: stale ? "reload" : "" };
-  if (!progress.total) return { kind: "idle", title: "还没识别到作品卡片", hint: stale || `${where}在 Netflix 首页、浏览或搜索页会自动识别；播放页没有卡片。`, rescan: true, action: stale ? "reload" : "" };
+  const stale = version && version !== manifestVersion ? t("页面脚本为 v{page}，刷新页面以使用 v{current}。", { page: version, current: manifestVersion }) : "";
+  const where = page.netflix ? "" : t("测试页面") + " · ";
+  if (!enabled) return { kind: "paused", title: t("已暂停"), hint: stale || t("页面上的评分和遮罩已隐藏，打开右上角开关即可恢复。"), action: stale ? "reload" : "" };
+  if (!progress.total) return { kind: "idle", title: t("还没识别到作品卡片"), hint: stale || where + t("在 Netflix 首页、浏览或搜索页会自动识别；播放页没有卡片。"), rescan: true, action: stale ? "reload" : "" };
   const matched = Number(summary.matched) || 0;
+  const counts = { done: progress.done, total: progress.total, matched };
   const title = progress.pending
-    ? `正在获取评分 · ${progress.done}/${progress.total}`
-    : progress.waiting ? `已查询 ${progress.done}/${progress.total} 部 · ${matched} 部已匹配`
-      : `已完成 · ${matched}/${progress.total} 部已匹配`;
-  const waitingHint = progress.waiting ? `其余 ${progress.waiting} 部滚动到附近时自动查询。` : "";
-  return { kind: progress.pending ? "working" : "done", title, hint: stale || waitingHint || (where ? "测试页面" : ""), rescan: true, progress, summary, action: stale ? "reload" : "" };
+    ? t("正在获取评分 · {done}/{total}", counts)
+    : progress.waiting ? t("已查询 {done}/{total} 部 · {matched} 部已匹配", counts)
+      : t("已完成 · {matched}/{total} 部已匹配", counts);
+  const waitingHint = progress.waiting ? t("其余 {count} 部滚动到附近时自动查询。", { count: progress.waiting }) : "";
+  return { kind: progress.pending ? "working" : "done", title, hint: stale || waitingHint || (where ? t("测试页面") : ""), rescan: true, progress, summary, action: stale ? "reload" : "" };
 }
 
 function renderPage() {
@@ -675,7 +785,7 @@ function renderPage() {
   ui.rescan.hidden = !view.rescan;
   ui.pageAction.hidden = !view.action;
   ui.pageAction.dataset.action = view.action || "";
-  if (!isBusy(ui.pageAction)) ui.pageAction.textContent = view.action === "open" ? "打开 Netflix" : "刷新页面";
+  if (!isBusy(ui.pageAction)) setLabel(ui.pageAction, view.action === "open" ? "打开 Netflix" : "刷新页面");
   ui.progress.hidden = !view.progress;
   if (view.progress) {
     ui.progressBar.style.width = `${Math.round(view.progress.ratio * 100)}%`;
@@ -692,12 +802,12 @@ function renderStats(summary) {
     ["失败", n("errors"), n("errors") ? "is-error" : ""],
     ["可见", n("visible"), ""]
   ];
-  const signature = stats.map((s) => s[1]).join(",");
+  const signature = `${getLocale()}|${stats.map((s) => s[1]).join(",")}`;
   if (ui.stats.dataset.sig === signature) return;
   ui.stats.dataset.sig = signature;
   ui.stats.replaceChildren(...stats.map(([label, value, tone]) => {
     const wrap = el("div", tone);
-    wrap.append(el("dt", "", label), el("dd", "", String(value)));
+    wrap.append(el("dt", "", t(label)), el("dd", "", String(value)));
     return wrap;
   }));
 }
@@ -713,13 +823,13 @@ async function onPageAction() {
       button: ui.pageAction,
       status: ui.rescanStatus,
       busyLabel: "刷新中…",
-      pending: "正在刷新页面…",
+      pending: msg("正在刷新页面…"),
       task: async () => {
         const tab = state.tab || await activeTab();
         if (!tab?.id) throw new Error("没有找到当前标签页");
         await chrome.tabs.reload(tab.id);
       },
-      success: "页面已刷新，正在重新识别作品。",
+      success: () => msg("页面已刷新，正在重新识别作品。"),
       clearAfter: 4000
     });
     pollPage();
@@ -731,9 +841,9 @@ async function onRescan() {
     button: ui.rescan,
     status: ui.rescanStatus,
     busyLabel: "扫描中…",
-    pending: "正在重新扫描当前页…",
+    pending: msg("正在重新扫描当前页…"),
     task: () => callTab({ type: "RESCAN" }),
-    success: "已重新扫描，正在获取评分。",
+    success: () => msg("已重新扫描，正在获取评分。"),
     clearAfter: 4000
   });
   pollPage();
@@ -763,7 +873,14 @@ function imdbUrl(result) {
 }
 
 function metaLine(year, type, extra) {
-  return [year, TYPE_LABEL[type], extra].filter(Boolean).join(" · ");
+  return [year, typeLabel(type), extra].filter(Boolean).join(" · ");
+}
+
+// Match reasons are canonical backend messages; trailing punctuation is
+// dropped so the localized sentence templates can add their own.
+function reasonText(result) {
+  const reason = String(result?.matchReason || "").replace(/[。.]$/, "");
+  return reason ? String(localizeMessage(reason)).replace(/[。.]$/, "") : "";
 }
 
 function isManual(key, result) {
@@ -784,10 +901,12 @@ function renderTitles() {
   ui.titlesBadge.hidden = !entries.length;
   ui.titlesBadge.textContent = String(counts.attention || entries.length);
   ui.titlesBadge.classList.toggle("is-warn", counts.attention > 0);
-  ui.titlesBadge.title = counts.attention ? `${counts.attention} 部需要处理` : `${entries.length} 部作品`;
+  ui.titlesBadge.title = counts.attention
+    ? t(counts.attention === 1 ? "1 部需要处理" : "{count} 部需要处理", { count: counts.attention })
+    : t(entries.length === 1 ? "1 部作品" : "{count} 部作品", { count: entries.length });
 
   const visible = filterEntries(entries, state.filter, state.query, state.expanded);
-  const settingsSig = `${state.settings?.scoreSource}|${state.settings?.minScore}`;
+  const settingsSig = `${state.settings?.scoreSource}|${state.settings?.minScore}|${getLocale()}`;
   const keep = new Set();
   visible.forEach((entry, index) => {
     const key = entry.item.key;
@@ -809,11 +928,12 @@ function renderTitles() {
   else if (!entries.length) empty = "当前页面还没有识别到作品卡片。";
   else if (!visible.length) empty = state.query ? "没有标题符合筛选。" : state.filter === "attention" ? "没有需要处理的作品。" : "还没有获取到评分的作品。";
   ui.titlesEmpty.hidden = !empty;
-  ui.titlesEmpty.textContent = empty;
+  ui.titlesEmpty.textContent = empty ? t(empty) : "";
 }
 
 function createRow(key) {
   const li = ui.rowTpl.content.firstElementChild.cloneNode(true);
+  localizeDOM(li);
   const row = {
     key,
     li,
@@ -831,6 +951,7 @@ function createRow(key) {
     submit: $(".fix-submit", li),
     status: $(".fix-status", li),
     candidates: $(".candidates", li),
+    found: null,
     rowSig: "",
     matchSig: "",
     prefilled: false
@@ -878,15 +999,18 @@ function toggleRow(row, force) {
 function rowSubParts(key, entry) {
   const { item, result } = entry;
   const status = entryStatus(entry);
-  const manual = isManual(key, result) ? [["s-manual", "手动绑定"]] : [];
+  const manual = isManual(key, result) ? [["s-manual", t("手动绑定")]] : [];
   switch (status) {
-    case "pending": return [["", "获取评分中…"]];
-    case "waiting": return [["", "滚动到附近时查询"]];
-    case "disabled": return [["", "已暂停，未获取评分"]];
-    case "ambiguous": return [["s-warn", `有 ${result.candidates?.length || "多"} 个可能的匹配，点击确认`]];
-    case "not_found": return [["", "没有找到匹配，点击手动搜索"]];
-    case "error": return [["s-error", "获取失败，点击查看"]];
-    case "no_rating": return [...manual, ["", `已匹配 ${result.title || "作品"}，暂无评分`]];
+    case "pending": return [["", t("获取评分中…")]];
+    case "waiting": return [["", t("滚动到附近时查询")]];
+    case "disabled": return [["", t("已暂停，未获取评分")]];
+    case "ambiguous": {
+      const count = result.candidates?.length;
+      return [["s-warn", count ? t("有 {count} 个可能的匹配，点击确认", { count }) : t("有多个可能的匹配，点击确认")]];
+    }
+    case "not_found": return [["", t("没有找到匹配，点击手动搜索")]];
+    case "error": return [["s-error", t("获取失败，点击查看")]];
+    case "no_rating": return [...manual, ["", result.title ? t("已匹配 {title}，暂无评分", { title: result.title }) : t("已匹配作品，暂无评分")]];
     default: break;
   }
   const differs = result.title && result.title.trim().toLowerCase() !== String(item.title || "").trim().toLowerCase();
@@ -902,7 +1026,8 @@ function updateRow(row, entry, settingsSig) {
   if (sig !== row.rowSig) {
     row.rowSig = sig;
     row.li.dataset.status = status;
-    row.name.textContent = entry.item.title || "（无标题）";
+    const title = entry.item.title || t("（无标题）");
+    row.name.textContent = title;
     row.sub.replaceChildren();
     rowSubParts(row.key, entry).forEach(([cls, text], i) => {
       if (i) row.sub.append(" · ");
@@ -912,35 +1037,47 @@ function updateRow(row, entry, settingsSig) {
     row.score.className = "title-score";
     if (picked) {
       const formatted = formatRating(picked.rating, picked.key);
-      row.score.append(el("b", "", formatted.text + (picked.key === "rt" ? "%" : "")), el("small", "", RATING_INFO[picked.key]?.short || picked.key));
+      row.score.append(el("b", "", formatted.text + (picked.key === "rt" ? "%" : "")), el("small", "", ratingShort(picked.key)));
       if (isBelowThreshold(picked.rating, picked.key, state.settings)) {
         row.score.classList.add("is-low");
-        row.score.title = "低于设定的最低评分";
+        row.score.title = t("低于设定的最低评分");
       } else row.score.title = "";
     } else if (status === "ok" || status === "no_rating") {
+      const source = state.settings?.scoreSource || "auto";
       row.score.classList.add("is-none");
       row.score.append(el("b", "", "—"), el("small", "", sourceShort()));
-      row.score.title = `没有${SOURCES[state.settings?.scoreSource]?.label || ""}评分`;
+      row.score.title = SOURCES[source] && source !== "auto" ? t("没有{source}评分", { source: t(SOURCES[source].label) }) : t("没有评分");
     }
-    row.button.setAttribute("aria-label", `${entry.item.title}，${statusLabel(status)}${picked ? `，${RATING_INFO[picked.key]?.label} ${formatRating(picked.rating, picked.key).text}` : ""}`);
+    row.button.setAttribute("aria-label", picked
+      ? t("{title}，{status}，{source} {score}", { title, status: statusLabel(status), source: ratingLabel(picked.key), score: formatRating(picked.rating, picked.key).text })
+      : t("{title}，{status}", { title, status: statusLabel(status) }));
   }
   if (!row.detail.hidden) renderMatch(row, entry);
 }
 
+function ratingLabel(key) {
+  return RATING_INFO[key] ? t(RATING_INFO[key].label) : key;
+}
+
+function ratingShort(key) {
+  return RATING_INFO[key] ? t(RATING_INFO[key].short) : key;
+}
+
 function sourceShort() {
   const source = state.settings?.scoreSource || "auto";
-  return source === "auto" ? "评分" : RATING_INFO[source]?.short || source;
+  return source === "auto" ? t("评分") : ratingShort(source);
 }
 
 function statusLabel(status) {
-  return { ok: "已匹配", no_rating: "暂无评分", ambiguous: "待确认", not_found: "未找到", error: "获取失败", pending: "获取中", waiting: "等候查询" }[status] || status;
+  const label = { ok: "已匹配", no_rating: "暂无评分", ambiguous: "待确认", not_found: "未找到", error: "获取失败", pending: "获取中", waiting: "等候查询", disabled: "已暂停" }[status];
+  return label ? t(label) : status;
 }
 
 function renderMatch(row, entry, force = false) {
   const { item, result } = entry;
   const status = entryStatus(entry);
   const manual = isManual(row.key, result);
-  const sig = JSON.stringify([status, result, manual]);
+  const sig = JSON.stringify([status, result, manual, getLocale()]);
   if (!force && sig === row.matchSig) return;
   row.matchSig = sig;
   const box = row.match;
@@ -948,7 +1085,7 @@ function renderMatch(row, entry, force = false) {
 
   if (status === "pending" || status === "waiting" || status === "disabled") {
     const text = { pending: "正在匹配并获取评分…", waiting: "这张卡片还不在可视区域附近，滚动到它附近时会自动查询。", disabled: "评分镜片已暂停，打开右上角开关后会重新获取。" }[status];
-    box.append(el("p", "match-reason", text));
+    box.append(el("p", "match-reason", t(text)));
     return;
   }
   if (result?.id) {
@@ -960,21 +1097,25 @@ function renderMatch(row, entry, force = false) {
     if (url) meta.append(" · ", link(url, "IMDb ↗"));
     left.append(meta);
     head.append(left);
-    if (manual) head.append(el("span", "manual-tag", "手动绑定"));
+    if (manual) head.append(el("span", "manual-tag", t("手动绑定")));
     box.append(head);
   }
-  const reasonText = String(result?.matchReason || "").replace(/[。.]$/, "");
+  const reason = reasonText(result);
   if (status === "ok" || status === "no_rating") {
-    const reason = [];
-    if (reasonText) reason.push(`依据：${reasonText}`);
+    const parts = [];
+    if (reason) parts.push(t("依据：{reason}", { reason }));
     const confidence = manual ? "" : confidenceLabel(result?.confidence);
-    if (confidence) reason.push(confidence);
-    if (reason.length) box.append(el("p", "match-reason", reason.join(" · ")));
-  } else if (status === "ambiguous" && reasonText) box.append(el("p", "match-reason", `${reasonText}。`));
-  if (status === "not_found") box.append(el("p", "match-reason", `${reasonText || "没有找到对应作品"}。可以在下方用英文原名或 IMDb 链接手动指定。`));
-  if (status === "error") box.append(el("p", "match-error", `获取失败${result?.warning ? `：${result.warning}` : ""}。可能是网络或评分源暂时不可用，稍后可点「重新扫描」。`));
-  else if (result?.warning) box.append(el("p", "match-warning", result.warning));
-  if (status === "no_rating") box.append(el("p", "match-reason", "已找到作品，但评分源暂时没有它的评分。"));
+    if (confidence) parts.push(confidence);
+    if (parts.length) box.append(el("p", "match-reason", parts.join(" · ")));
+  } else if (status === "ambiguous" && reason) box.append(el("p", "match-reason", t("{reason}。", { reason })));
+  if (status === "not_found") box.append(el("p", "match-reason", t("{reason}。可以在下方用英文原名或 IMDb 链接手动指定。", { reason: reason || t("没有找到对应作品") })));
+  const warning = result?.warning ? localizeMessage(result.warning) : "";
+  if (status === "error") {
+    box.append(el("p", "match-error", warning
+      ? t("获取失败：{warning}。可能是网络或评分源暂时不可用，稍后可点「重新扫描」。", { warning })
+      : t("获取失败。可能是网络或评分源暂时不可用，稍后可点「重新扫描」。")));
+  } else if (warning) box.append(el("p", "match-warning", warning));
+  if (status === "no_rating") box.append(el("p", "match-reason", t("已找到作品，但评分源暂时没有它的评分。")));
 
   const ratings = normalizeRatings(result?.ratings);
   const keys = Object.keys(ratings);
@@ -983,11 +1124,14 @@ function renderMatch(row, entry, force = false) {
     for (const key of keys) {
       const rating = ratings[key];
       const formatted = formatRating(rating, key);
-      const info = RATING_INFO[key] || { label: key, note: rating.provider || "" };
+      const info = RATING_INFO[key];
+      const label = info ? t(info.label) : key;
       const li = el("li");
       const name = el("span", "r-name");
-      name.append(rating.url ? link(rating.url, `${info.label} ↗`) : info.label);
-      const note = rating.provider && !info.note.includes(rating.provider) ? `${info.note} · ${rating.provider}` : info.note;
+      name.append(rating.url ? link(rating.url, `${label} ↗`) : label);
+      // Provider names are identities; only the canonical note is translated.
+      const baseNote = info ? t(info.note) : "";
+      const note = rating.provider && !(info?.note || "").includes(rating.provider) ? [baseNote, rating.provider].filter(Boolean).join(" · ") : baseNote;
       if (note) name.append(el("small", "", note));
       const value = el("span", "r-value", formatted.text);
       value.append(el("small", "", formatted.unit === "%" ? "%" : ` ${formatted.unit}`));
@@ -999,9 +1143,9 @@ function renderMatch(row, entry, force = false) {
 
   if (manual) {
     const actions = el("div", "match-actions");
-    const unbind = el("button", "btn btn-quiet btn-sm", "");
+    const unbind = el("button", "btn btn-quiet btn-sm");
     unbind.type = "button";
-    unbind.append(el("span", "btn-label", "恢复自动匹配"));
+    unbind.append(labelSpan("恢复自动匹配"));
     unbind.addEventListener("click", () => unbindRow(row, unbind));
     actions.append(unbind);
     box.append(actions);
@@ -1010,7 +1154,7 @@ function renderMatch(row, entry, force = false) {
   // Candidates from the original search allow a one-click correction without a new request.
   const candidates = Array.isArray(result?.candidates) ? result.candidates.filter((c) => c?.id) : [];
   if (candidates.length) {
-    box.append(el("p", "sub-label", status === "ambiguous" ? "可能是以下作品，选择正确的一个：" : "检索到的候选"));
+    box.append(el("p", "sub-label", t(status === "ambiguous" ? "可能是以下作品，选择正确的一个：" : "检索到的候选")));
     const list = el("ul", "candidates");
     for (const candidate of candidates.slice(0, 6)) list.append(candidateRow(row, candidate, result));
     box.append(list);
@@ -1022,32 +1166,49 @@ function candidateRow(row, candidate, current) {
   const isCurrent = current?.id && candidate.id === current.id && entryStatus(state.entries.get(row.key)) !== "ambiguous";
   li.classList.toggle("is-current", Boolean(isCurrent));
   const main = el("div", "cand-main");
-  main.append(el("div", "cand-title", candidate.title || candidate.id));
+  const title = el("div", "cand-title", candidate.title || candidate.id);
+  if (isCurrent) title.append(el("span", "cand-current", t("当前")));
+  main.append(title);
   const meta = el("div", "cand-meta", metaLine(candidate.year, candidate.type, candidate.provider));
   const url = candidate.url || (/^tt\d+$/.test(candidate.id || "") ? `https://www.imdb.com/title/${candidate.id}/` : "");
-  if (url) meta.append(" · ", link(url, candidate.id || "查看 ↗"));
+  if (url) meta.append(" · ", link(url, candidate.id || t("查看 ↗")));
   main.append(meta);
   const button = el("button", "btn btn-quiet btn-sm");
   button.type = "button";
-  button.append(el("span", "btn-label", isCurrent ? "当前匹配" : "绑定"));
+  button.append(labelSpan(isCurrent ? "当前匹配" : "绑定"));
   button.disabled = Boolean(isCurrent);
-  button.setAttribute("aria-label", `绑定为 ${candidate.title || candidate.id}${candidate.year ? ` (${candidate.year})` : ""}`);
+  button.setAttribute("aria-label", t("绑定为 {title}", { title: candidateName(candidate) }));
   button.addEventListener("click", () => bindRow(row, candidate, button));
   li.append(main, button);
   return li;
 }
 
+function candidateName(candidate) {
+  return `${candidate.title || candidate.id}${candidate.year ? ` (${candidate.year})` : ""}`;
+}
+
+// Results of the last manual search for a row; kept so a language switch can redraw them.
+function setFound(row, candidates) {
+  row.found = candidates?.length ? candidates : null;
+  renderFound(row);
+}
+
+function renderFound(row) {
+  const result = state.entries.get(row.key)?.result;
+  row.candidates.replaceChildren(...(row.found || []).map((candidate) => candidateRow(row, candidate, result)));
+}
+
 async function searchFor(row) {
   const raw = row.query.value.trim();
   if (!raw) {
-    setStatus(row.status, "error", "请输入片名或 IMDb 编号");
+    setStatus(row.status, "error", msg("请输入片名或 IMDb 编号"));
     row.query.focus();
     return;
   }
   const id = extractImdbId(raw);
   const year = parseYearInput(row.year.value);
   if (!id && !year.ok) {
-    setStatus(row.status, "error", "年份需为四位数字，或留空");
+    setStatus(row.status, "error", msg("年份需为四位数字，或留空"));
     row.year.focus();
     return;
   }
@@ -1057,28 +1218,27 @@ async function searchFor(row) {
     // `type` is the message type; the title type travels as `titleType`.
     if (row.type.value) message.titleType = row.type.value;
   }
-  row.candidates.replaceChildren();
+  setFound(row, null);
   const response = await runOp({
     button: row.submit,
     status: row.status,
     busyLabel: "搜索中…",
-    pending: id ? `正在查找 ${id}…` : "正在搜索，可能需要几秒…",
+    pending: id ? msg("正在查找 {id}…", { id }) : msg("正在搜索，可能需要几秒…"),
     task: () => callBackground(message),
     success: (res) => {
       const total = rankCandidates(res.candidates).total;
-      if (!total) return "";
-      if (total <= SEARCH_LIMIT) return `找到 ${total} 个候选，点「绑定」确认。`;
-      return `找到 ${total} 个候选，显示最接近的 ${SEARCH_LIMIT} 个${year.year ? "" : "；补充年份可缩小范围"}。`;
+      if (!total) return null;
+      if (total <= SEARCH_LIMIT) return msg("找到 {total} 个候选，点「绑定」确认。", { total });
+      return msg(year.year ? "找到 {total} 个候选，显示最接近的 {limit} 个。" : "找到 {total} 个候选，显示最接近的 {limit} 个；补充年份可缩小范围。", { total, limit: SEARCH_LIMIT });
     }
   });
   if (!response) return;
   const candidates = rankCandidates(response.candidates, id ? undefined : year.year).shown;
   if (!candidates.length) {
-    setStatus(row.status, "error", id ? `没有找到 ${id}，请检查编号。` : "没有找到候选。试试英文原名，或直接粘贴 IMDb 链接（如 tt1375666）。");
+    setStatus(row.status, "error", id ? msg("没有找到 {id}，请检查编号。", { id }) : msg("没有找到候选。试试英文原名，或直接粘贴 IMDb 链接（如 tt1375666）。"));
     return;
   }
-  const result = state.entries.get(row.key)?.result;
-  row.candidates.replaceChildren(...candidates.map((candidate) => candidateRow(row, candidate, result)));
+  setFound(row, candidates);
 }
 
 async function bindRow(row, candidate, button) {
@@ -1088,15 +1248,15 @@ async function bindRow(row, candidate, button) {
     button,
     status: row.actionStatus,
     busyLabel: "绑定中…",
-    pending: `正在绑定为「${candidate.title || candidate.id}」…`,
+    pending: msg("正在绑定为「{title}」…", { title: candidate.title || candidate.id }),
     task: () => callBackground({ type: "BIND", item: entry.item, candidate }),
-    success: `已绑定为「${candidate.title || candidate.id}${candidate.year ? ` (${candidate.year})` : ""}」，页面评分正在刷新。`
+    success: () => msg("已绑定为「{title}」，页面评分正在刷新。", { title: candidateName(candidate) })
   });
   if (!response) return;
   state.manualKeys.add(row.key);
   state.removedManual.delete(row.key);
   if (response.result) entry.result = response.result;
-  row.candidates.replaceChildren();
+  setFound(row, null);
   row.rowSig = "";
   updateRow(row, entry, "");
   renderMatch(row, entry, true);
@@ -1110,9 +1270,9 @@ async function unbindRow(row, button) {
     button,
     status: row.actionStatus,
     busyLabel: "恢复中…",
-    pending: "正在恢复自动匹配…",
+    pending: msg("正在恢复自动匹配…"),
     task: () => callBackground({ type: "UNBIND", item: entry.item }),
-    success: "已恢复自动匹配，页面正在重新匹配。"
+    success: () => msg("已恢复自动匹配，页面正在重新匹配。")
   });
   if (!response) return;
   state.manualKeys.delete(row.key);
@@ -1142,10 +1302,10 @@ function healthRows() {
 function renderHealth() {
   if (!ui) return;
   const list = healthRows();
-  if (state.testing) ui.healthMeta.textContent = "正在实时请求各评分源…";
-  else if (state.checks) ui.healthMeta.textContent = `实时验证结果 · ${relativeTime(state.checksAt)}`;
-  else if (list.length) ui.healthMeta.textContent = "来自最近的实际请求。点「实时验证」重新检查。";
-  else ui.healthMeta.textContent = "还没有请求记录。点「实时验证」检查各评分源是否可用。";
+  if (state.testing) ui.healthMeta.textContent = t("正在实时请求各评分源…");
+  else if (state.checks) ui.healthMeta.textContent = t("实时验证结果 · {time}", { time: relativeTime(state.checksAt) });
+  else if (list.length) ui.healthMeta.textContent = t("来自最近的实际请求。点「实时验证」重新检查。");
+  else ui.healthMeta.textContent = t("还没有请求记录。点「实时验证」检查各评分源是否可用。");
   ui.healthList.style.opacity = state.testing ? ".5" : "";
   ui.healthList.replaceChildren(...list.map((entry) => {
     const info = providerInfo(entry.name);
@@ -1156,7 +1316,8 @@ function renderHealth() {
     if (info.note) name.append(el("small", "", info.note));
     const when = !state.checks && entry.at ? ` · ${relativeTime(entry.at)}` : "";
     li.append(el("span", "status-dot"), name, el("span", "h-state", view.label + when));
-    if (entry.message && entry.message !== view.label) li.append(el("span", "h-msg", entry.message));
+    const message = entry.message ? localizeMessage(entry.message) : "";
+    if (message && message !== view.label) li.append(el("span", "h-msg", message));
     return li;
   }));
 }
@@ -1168,9 +1329,9 @@ async function testProviders() {
     button: ui.testProviders,
     status: ui.testStatus,
     busyLabel: "验证中…",
-    pending: "正在实时请求各评分源，可能需要十几秒…",
+    pending: msg("正在实时请求各评分源，可能需要十几秒…"),
     task: () => callBackground({ type: "TEST_PROVIDERS" }),
-    success: (res) => summarizeChecks(res.checks)
+    success: (res) => () => summarizeChecks(res.checks)
   });
   state.testing = false;
   if (response) {
@@ -1187,33 +1348,35 @@ function summarizeChecks(checks = []) {
   const live = checks.filter((c) => c.status !== "not_configured");
   const ok = live.filter((c) => c.status === "ok").length;
   const skipped = checks.length - live.length;
-  if (live.length && !ok && navigator.onLine === false) return "设备似乎离线，所有评分源请求失败。";
-  const parts = [`${ok}/${live.length} 个评分源可用`];
-  if (skipped) parts.push(`${skipped} 个未配置 Key（可选）`);
-  return parts.join("，") + "。";
+  if (live.length && !ok && navigator.onLine === false) return t("设备似乎离线，所有评分源请求失败。");
+  const params = { ok, total: live.length, skipped };
+  return skipped ? t("{ok}/{total} 个评分源可用，{skipped} 个未配置 Key（可选）。", params) : t("{ok}/{total} 个评分源可用。", params);
 }
 
 function renderKeyState() {
   if (!ui) return;
-  ui.keyState.textContent = state.hasApiKey ? "已配置" : "未配置";
+  ui.keyState.dataset.i18n = state.hasApiKey ? "已配置" : "未配置";
+  ui.keyState.textContent = t(ui.keyState.dataset.i18n);
   ui.keyState.classList.toggle("is-set", state.hasApiKey);
   ui.removeKey.hidden = !state.hasApiKey;
-  ui.apiKey.placeholder = state.hasApiKey ? "输入新 Key 以替换当前 Key" : "粘贴 OMDb API Key";
+  const placeholder = state.hasApiKey ? "输入新 Key 以替换当前 Key" : "粘贴 OMDb API Key";
+  ui.apiKey.dataset.i18nPlaceholder = placeholder;
+  ui.apiKey.placeholder = t(placeholder);
 }
 
 async function saveKey() {
   const apiKey = ui.apiKey.value.trim();
   if (!apiKey) {
-    setStatus(ui.keyStatus, "error", "请先输入 Key");
+    setStatus(ui.keyStatus, "error", msg("请先输入 Key"));
     return;
   }
   const response = await runOp({
     button: ui.saveKey,
     status: ui.keyStatus,
     busyLabel: "保存中…",
-    pending: "正在保存 Key…",
+    pending: msg("正在保存 Key…"),
     task: () => callBackground({ type: "SAVE_SETTINGS", settings: {}, apiKey }),
-    success: "Key 已保存，正在验证…"
+    success: () => msg("Key 已保存，正在验证…")
   });
   if (!response) return;
   ui.apiKey.value = "";
@@ -1223,10 +1386,14 @@ async function saveKey() {
   renderSourceHint();
   const tested = await testProviders();
   const omdb = tested?.checks?.find((c) => /omdb/i.test(String(c.name)));
-  if (!tested) setStatus(ui.keyStatus, "error", "Key 已保存，但验证没有完成，可稍后点「实时验证」。");
-  else if (!omdb) setStatus(ui.keyStatus, "success", "Key 已保存。");
-  else if (omdb.status === "ok") setStatus(ui.keyStatus, "success", "Key 已保存并验证可用。");
-  else setStatus(ui.keyStatus, "error", `Key 已保存，但验证失败：${omdb.message || describeHealth(omdb.status, navigator.onLine !== false).label}`);
+  if (!tested) setStatus(ui.keyStatus, "error", msg("Key 已保存，但验证没有完成，可稍后点「实时验证」。"));
+  else if (!omdb) setStatus(ui.keyStatus, "success", msg("Key 已保存。"));
+  else if (omdb.status === "ok") setStatus(ui.keyStatus, "success", msg("Key 已保存并验证可用。"));
+  else {
+    setStatus(ui.keyStatus, "error", () => t("Key 已保存，但验证失败：{reason}", {
+      reason: omdb.message ? localizeMessage(omdb.message) : describeHealth(omdb.status, navigator.onLine !== false).label
+    }));
+  }
 }
 
 async function removeKey() {
@@ -1234,9 +1401,9 @@ async function removeKey() {
     button: ui.removeKey,
     status: ui.keyStatus,
     busyLabel: "移除中…",
-    pending: "正在移除 Key…",
+    pending: msg("正在移除 Key…"),
     task: () => callBackground({ type: "SAVE_SETTINGS", settings: {}, removeApiKey: true }),
-    success: "已移除 Key，之后不再获取烂番茄与 Metacritic。"
+    success: () => msg("已移除 Key，之后不再获取烂番茄与 Metacritic。")
   });
   if (!response) return;
   state.hasApiKey = Boolean(response.hasApiKey);
@@ -1248,7 +1415,7 @@ async function removeKey() {
 
 function renderCache() {
   if (!ui) return;
-  ui.cacheMeta.textContent = state.cacheEntries === null ? "—" : state.cacheEntries ? `已缓存 ${state.cacheEntries} 条评分` : "暂无缓存";
+  ui.cacheMeta.textContent = state.cacheEntries === null ? "—" : state.cacheEntries ? t("已缓存 {count} 条评分", { count: state.cacheEntries }) : t("暂无缓存");
 }
 
 async function clearCache() {
@@ -1257,11 +1424,11 @@ async function clearCache() {
     button: ui.clearCache,
     status: ui.cacheStatus,
     busyLabel: "清空中…",
-    pending: "正在清空缓存…",
+    pending: msg("正在清空缓存…"),
     task: () => callBackground({ type: "CLEAR_CACHE" }),
     success: (res) => {
       const count = Number.isFinite(res?.cleared) ? res.cleared : before;
-      return `已清空${count ? ` ${count} 条` : ""}缓存，当前页正在重新获取评分。`;
+      return count ? msg("已清空 {count} 条缓存，当前页正在重新获取评分。", { count }) : msg("已清空缓存，当前页正在重新获取评分。");
     }
   });
   if (!response) return;
@@ -1322,7 +1489,7 @@ function collectUi() {
     "minScore", "minScoreValue", "minScoreUnit", "minScoreMin", "minScoreMax", "dimLowScores", "dimOptions", "dimOpacity",
     "dimOpacityOut", "revealOnHover", "previewHigh", "previewLow", "previewCaption", "titleFilter", "titleList",
     "titlesEmpty", "testProviders", "healthMeta", "healthList", "testStatus", "omdb", "keyState", "keyForm", "apiKey",
-    "saveKey", "removeKey", "keyStatus", "useOmdb", "cacheMeta", "clearCache", "cacheStatus"
+    "saveKey", "removeKey", "keyStatus", "useOmdb", "cacheMeta", "clearCache", "cacheStatus", "language"
   ];
   const refs = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
   refs.preview = $(".preview");
@@ -1333,7 +1500,11 @@ function collectUi() {
 }
 
 function boot() {
+  // Browser language until GET_UI returns the saved preference.
+  setLanguage("auto");
+  localizeDOM(document);
   ui = collectUi();
+  ui.language.value = getLanguage();
   ui.version.textContent = `v${chrome.runtime.getManifest().version}`;
   setSettingsDisabled(true);
   bindSettings();
@@ -1367,6 +1538,10 @@ function boot() {
   confirmable(ui.clearCache, "确认清空？", clearCache);
   window.addEventListener("online", renderHealth);
   window.addEventListener("offline", renderHealth);
+  // Only the public settings object is read; credentials changes are ignored.
+  chrome.storage?.onChanged?.addListener((changes, area) => {
+    if (area === "local" && changes.settings) onStoredSettings(changes.settings.newValue);
+  });
 
   loadUi();
   pollPage();

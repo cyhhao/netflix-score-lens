@@ -19,9 +19,15 @@ try {
   await page.goto(`chrome-extension://${id}/library.html`);
   await page.waitForFunction(()=>document.querySelector('#statTotal')?.textContent==='0');
   assert.equal(await page.locator('#version').textContent(),`v${version}`);
+  const autoLanguage=await page.evaluate(()=>({browser:navigator.language,document:document.documentElement.lang}));
+  const expectedAuto=autoLanguage.browser.toLowerCase().startsWith('zh')?'zh-CN':'en';
+  assert.equal(autoLanguage.document,expectedAuto);
   assert.equal(await page.locator('#empty').isVisible(),true);
+  await page.evaluate(()=>chrome.runtime.sendMessage({type:'SAVE_SETTINGS',settings:{language:'en'}}));
+  await page.reload();
+  await page.waitForFunction(()=>document.querySelector('#statTotal')?.textContent==='0');
   await page.goto(`chrome-extension://${id}/popup.html`);
-  assert.equal(await page.getByRole('button',{name:'评分库',exact:true}).count(),1);
+  assert.equal(await page.getByRole('button',{name:'Library',exact:true}).count(),1);
   assert.deepEqual(errors,[]);
   console.log('PASS store ZIP root, runtime-only contents, actual extension boot, empty library and popup entry');
 } finally { if(context)await context.close();await rm(base,{recursive:true,force:true}); }
