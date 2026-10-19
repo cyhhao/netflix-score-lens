@@ -9,7 +9,7 @@
 3. 设置发布者名称、验证联系邮箱，并按 Google 要求启用两步验证及完成身份/商家身份信息。不要把 Google 密码、2FA 或付款信息放进仓库。
 4. 当前公开版插件可免费分发；如果后续增加收费/订阅，需重新检查地址、分发和披露要求。
 
-官方：[注册](https://developer.chrome.com/docs/webstore/register) · [账户设置](https://developer.chrome.com/docs/webstore/set-up-account) · [2-Step Verification](https://developer.chrome.com/blog/cws-two-step-verification)
+官方：[注册](https://developer.chrome.com/docs/webstore/register) · [账户设置](https://developer.chrome.com/docs/webstore/set-up-account) · [2-Step Verification](https://developer.chrome.com/docs/webstore/program-policies/two-step-verification)
 
 ## 2. 已准备的工程材料
 
