@@ -24,6 +24,14 @@ export function validItem(raw) {
   item.key=netflixId ? `nf:${netflixId}` : `title:${normalize(title)}:${item.year||''}:${item.type||''}`;
   return item;
 }
+// Only same-ID Netflix title links may be rendered from cached provenance.
+export function netflixTitleUrl(alias, netflixId) {
+  if(alias?.language!=='en'||!/^\d{4,12}$/.test(netflixId||''))return '';
+  try {
+    const u=new URL(alias.url);
+    return u.origin==='https://www.netflix.com'&&!u.username&&!u.password&&new RegExp(`^/(?:[a-z]{2,3}(?:-[a-z]{2,3})?/)?title/${netflixId}/?$`,'i').test(u.pathname)?u.origin+u.pathname:'';
+  } catch { return ''; }
+}
 export function ratingChoice(result, settings) {
   if (!result || result.status!=='ok') return null;
   const order=settings.scoreSource==='auto'?['imdb','tvmaze','rt','metacritic']:[settings.scoreSource];

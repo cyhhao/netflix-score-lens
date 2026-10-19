@@ -23,6 +23,10 @@ OMDb access is optional and uses the installing user's own API key. The project 
 - OMDb: https://www.omdbapi.com/
 - Rotten Tomatoes and Metacritic source links are human-facing search links where an exact provider permalink is unavailable; they are not guaranteed exact-work permalinks.
 
+## Netflix public display titles
+
+For weak automatic matches, the extension may request a public Netflix title page anonymously for an encountered Netflix ID and retain only the verified English display name, ID, source URL and cache metadata. It does not bundle pages, posters or a catalog database. Public availability does not establish unrestricted scraping or redistribution rights; applicable Netflix terms and the suitability of this optional enrichment require review before store distribution. The code license does not grant Netflix metadata or trademark rights.
+
 ## Development dependencies
 
 Playwright is used only for development/testing and is not packaged into the extension. Its own package includes the Apache-2.0 license and notices. Node.js, Chromium, Python and GitHub Actions are development tools/services with their own terms; they are not part of the runtime ZIP.

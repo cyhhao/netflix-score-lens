@@ -31,10 +31,12 @@ Options for both: `fetchImpl` (default global `fetch`) and `timeoutMs`
   requested shape, so the caller can weigh it — e.g. live `三体` with
   `year: 2023` returns Netflix's *3 Body Problem* at rank 0 and the 2023
   *Three-Body* at rank 1).
-- For CJK queries the candidate titles are English (IMDb matched an AKA), so
-  title similarity cannot be used; rely on rank, type and year.
+- For CJK queries the candidate titles are often English (IMDb matched an AKA).
+  Baseline localized inference uses IMDb rank 0, exact year and type; optional
+  same-ID Netflix English-title enrichment can independently confirm the name.
 - Years can differ by one between providers (Cinemeta lists *Amélie* as 2002,
-  IMDb as 2001). Allow ±1.
+  IMDb as 2001). The baseline exact-name matcher allows ±1; English enrichment
+  deliberately requires the exact year and type, with no rank-based tie-break.
 
 ### Search steps
 
@@ -110,6 +112,44 @@ normalized title on the caller side.
   releases) produce no candidates. TVmaze search is not used for recall.
 - Rate limits are not shared across browser profiles or devices behind the
   same IP.
+
+## Optional Netflix English display-title enrichment (`netflix-titles.js`, `matching.js`)
+
+This is not a Netflix-to-IMDb mapping API or a bulk catalog crawler. Only an
+encountered Netflix ID with available year/type and a weak automatic result is
+eligible. Already high-confidence and manually bound results bypass it.
+
+- Request `/title/{id}` on `https://www.netflix.com` with English Accept-Language,
+  `credentials: omit`, no referrer and no HTTP cache. Regional redirects are
+  accepted, without hard-coding a country or changing the account language.
+- Read at most 2 MiB, with a six-second request/body deadline, two concurrent
+  requests and 500 ms minimum spacing. No immediate retry. HTTP 403/429 backs
+  off for 60 seconds to one hour, respecting bounded Retry-After. Limits are
+  per worker lifetime; cached errors also prevent repeated per-ID requests.
+- The final same-ID HTTPS title route, English html.lang, one visible h1 and
+  public same-ID deep-link/canonical evidence must agree. HTTP-200 login/error
+  pages do not qualify. Embedded scripts/templates are ignored, never executed;
+  HTML and application/account state are not stored.
+- First verify existing candidates against the English name. Search that name
+  only if necessary. Require normalized exact name, exact year/type and one
+  unique IMDb ID. A contradictory earlier localized ID remains ambiguous and
+  unscored. Failure/unavailability falls back to the original search.
+- An English display name is not necessarily the original-language title.
+  Do not extract a premiere year from `latestYear` or the latest season.
+- `netflixTitlesV1` keeps at most 600 minimal ID/name/language/source-URL/status
+  records: success seven days, unavailable ten minutes, request error one minute.
+  Alias TTLs never shorten a successful rating's reuse interval: optional title
+  failures must not repeatedly spend rating-provider quota. A saved fallback is
+  re-enriched when its rating query is next due, or after an explicit cache clear.
+  TTL is a reuse boundary, not a deletion timer. Rating cache remains separately
+  capped at 600 query variants. Cache clear/key/mode resets remove both caches;
+  late responses from old generations cannot recreate them. Manual bindings
+  remain authoritative. Old weak rating entries upgrade on their next lookup;
+  old high/manual entries remain reusable.
+- Popup, page details and library show the English name and same-ID source link;
+  both library and popup search include the alias. Opening the library stays
+  local-only. No new host permission was added. Public-page availability and
+  terms are not guaranteed; see the store release gates and privacy policy.
 
 ## Evidence
 

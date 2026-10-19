@@ -41,7 +41,7 @@ Change the score threshold, dimming strength and hover-to-reveal behavior from t
 
 - **Clearly labelled scores:** IMDb ratings mirrored by Cinemeta, TVmaze's independent show ratings, and optional OMDb-provided IMDb / Rotten Tomatoes / Metacritic scores. Each source keeps its native scale.
 - **Adjustable low-score dimming:** Choose the source, threshold and opacity. Reveal a dimmed card on hover. Missing or unconfirmed scores are never treated as zero.
-- **Conservative matching:** Netflix IDs identify titles; localized names, year and movie/series type help resolve IMDb IDs. Chinese, Japanese and Korean titles use IMDb suggestion/alias search first. Uncertain matches remain open for confirmation.
+- **Conservative matching:** Netflix IDs identify titles. When the initial title search is not enough to confirm a match, the extension may read that ID's public English display title with an anonymous, cookie-free request, then require an exact year/type check against a unique IMDb candidate. Conflicts remain manual; it does not crawl the catalog or store HTML.
 - **Manual corrections:** Search by title, year, type, IMDb ID or link, then explicitly bind the correct result or restore automatic matching.
 - **Independent local library:** Search and filter by movie/series or status; sort by score, title, year or update time; group by type, status or score band; inspect sources and open the Netflix title.
 - **Visible status:** Distinguish request failures, missing scores, quota/key issues and ambiguous matches. Pause, retry and test sources explicitly.
@@ -71,7 +71,7 @@ Valid cache entries are reused first. Successful scores are normally reusable fo
 
 ## Limitations
 
-- This is not an official Netflix↔IMDb mapping. Remakes, similar names and localized titles may need manual correction; Netflix may not expose an English name or a complete year.
+- This is not an official Netflix↔IMDb mapping. Remakes, similar names and localized titles may need manual correction; the public English-title lookup may be unavailable, and Netflix may not expose a usable year.
 - Cinemeta is a mirror, not the official IMDb rating API. IMDb's suggestion endpoint has no public stability commitment. Providers may rate-limit, change access or change terms.
 - Not every title has every score, and mirrored ratings may be stale.
 - The library is a **view of up to 600 local cached query variants**, not the complete Netflix catalog or a permanent watchlist. Cache clearing, key changes, provider-mode changes and eviction can remove entries.
@@ -82,7 +82,7 @@ Valid cache entries are reused first. Successful scores are normally reusable fo
 
 [Privacy policy](https://cyhhao.github.io/netflix-score-lens/privacy.html) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [Security policy](SECURITY.md)
 
-The extension reads the title name, Netflix ID, available year and type needed for matching. **Title names or IMDb IDs are sent to the relevant rating providers**, which can see the requesting IP address. An optional OMDb key is sent only to OMDb. There is no project-operated collection backend, advertising, analytics SDK, account registration or browser-history permission. The extension does not read Netflix passwords or cookies.
+The extension reads the title name, Netflix ID, available year and type needed for matching. **Title names or IMDb IDs are sent to the relevant rating providers; when English-title enrichment is needed, the Netflix title ID is also sent to Netflix's public title page** without Netflix cookies. Recipients can see the requesting IP address. An optional OMDb key is sent only to OMDb. There is no project-operated collection backend, advertising, analytics SDK, account registration or browser-history permission. The extension does not read Netflix passwords or cookies.
 
 **Local storage does not mean encrypted storage.** Settings, encountered-title caches, manual bindings and the optional key currently use Chrome's local extension storage. Content scripts cannot read the credentials, but this is not an OS password vault and does not implement application-level encryption at rest. Someone with access to the browser profile or device may still read it. Do not enter another service's password or a high-value credential.
 

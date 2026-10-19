@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parent.parent
 manifest = json.loads((ROOT / 'manifest.json').read_text())
 version = manifest['version']
 files = [
-    'manifest.json', 'background.js', 'core.js', 'providers.js', 'bridge.js',
+    'manifest.json', 'background.js', 'core.js', 'providers.js', 'matching.js', 'netflix-titles.js', 'bridge.js',
     'content.js', 'content.css', 'i18n.js', 'i18n-content.js', 'i18n-library.js', 'i18n-popup.js', 'popup.html', 'popup.css', 'popup.js',
     'library.html', 'library.css', 'library.js', 'LICENSE', 'THIRD_PARTY_NOTICES.md',
 ] + [f'icons/icon{s}.png' for s in (16, 32, 48, 128)]

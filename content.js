@@ -97,7 +97,7 @@
     a.classList.toggle('nsl-low',low);a.classList.toggle('nsl-hover-reveal',state.settings.revealOnHover);
     a.style.setProperty('--nsl-dim',String(state.settings.dimOpacity));
     badge.setAttribute('aria-label',t('{title}：{badge}。点击查看匹配、来源及纠错方式',{title:record.item.title,badge:badge.textContent}));
-    badge.title=[record.item.title,r?.title&&`${r.title} (${r.year||t('未知年份')})`,r?.matchReason&&localizeMessage(r.matchReason),low?t('低于 {score}{reveal}',{score:state.settings.minScore,reveal:state.settings.revealOnHover?t('，悬停可恢复亮度'):''}):!score&&r?.status==='ok'?t('所选评分源暂无数据，不会变暗'):t('点击评分查看来源；插件弹窗可纠错')].filter(Boolean).join('\n');
+    badge.title=[record.item.title,r?.netflixTitle?.title&&t('Netflix 英文展示名：{title}',{title:r.netflixTitle.title}),r?.title&&`${r.title} (${r.year||t('未知年份')})`,r?.matchReason&&localizeMessage(r.matchReason),low?t('低于 {score}{reveal}',{score:state.settings.minScore,reveal:state.settings.revealOnHover?t('，悬停可恢复亮度'):''}):!score&&r?.status==='ok'?t('所选评分源暂无数据，不会变暗'):t('点击评分查看来源；插件弹窗可纠错')].filter(Boolean).join('\n');
   }
   function summary(){
     const items=new Map();let visible=0;
@@ -130,6 +130,11 @@
     if(!live())return;
     panel.dataset.view='detail';panel.dataset.itemKey=item.key;
     const r=state.results.get(item.key);basePanel(item.title);
+    if(r?.netflixTitle?.title) {
+      p(t('Netflix 英文展示名：{title}',{title:r.netflixTitle.title}));
+      const url=core.netflixTitleUrl(r.netflixTitle,item.netflixId);
+      if(url){const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=t('Netflix 标题来源 ↗');panel.append(a);}
+    }
     p(r?.title?`${r.title} · ${r.year||t('未知年份')} · ${typeLabel(r.type)}`:t(statusLabels[r?.status]||'等待查询'));
     if(r?.matchReason)p(localizeMessage(r.matchReason));if(r?.warning)p(localizeMessage(r.warning));
     if(r?.status==='error'){const retry=document.createElement('button');retry.textContent=t('重新查询');retry.onclick=()=>{state.failAt.delete(item.key);panel.hidden=true;schedule();};panel.append(retry);}
@@ -172,7 +177,7 @@
   function schedule(){if(!live())return;if(!scanTimer)scanTimer=setTimeout(()=>{scanTimer=null;scan();},180);}
   function missingResult(key){
     const r=state.results.get(key);
-    const stale=r?.fetchedAt&&Date.now()-r.fetchedAt>(r.warning?300000:r.status==='ok'?7*86400000:600000);
+    const stale=r?.expiresAt?Date.now()>=r.expiresAt:r?.fetchedAt&&Date.now()-r.fetchedAt>(r.warning?300000:r.status==='ok'?7*86400000:600000);
     return (!r||stale||r.status==='error'||r.status==='disabled')&&!state.pending.has(key)&&Date.now()-(state.failAt.get(key)||0)>30000;
   }
   function drain(){

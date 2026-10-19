@@ -11,7 +11,7 @@ Use GitHub's private security advisory reporting for this repository. Do not inc
 - The MAIN-world bridge reads requested title IDs' public year/type, not entire Netflix account state.
 - No remotely downloaded code, `eval`-based response execution, analytics SDK, server-side account or project-owned collection endpoint is used.
 - The optional OMDb API key and title cache are currently stored in Chrome local extension storage **without application-level encryption at rest**. TRUSTED_CONTEXTS is an access restriction, not encryption. This is not a credential vault and does not protect against access to the local browser profile, a compromised extension runtime or a compromised operating system.
-- Rate requests can reveal title interests and the requesting IP to providers. The privacy policy describes this transmission; do not advertise this as “no data leaves the device.”
+- Rating requests and optional anonymous Netflix English-title requests can reveal title interests/IDs and the requesting IP to recipients. Public title parsing is bounded and non-executing; no HTML is retained. The privacy policy describes this transmission; do not advertise this as “no data leaves the device.”
 - Ratings are externally supplied, potentially stale data. Matching can be wrong, including for localized titles. The extension is not an authoritative catalog or a security filter.
 
 Before Chrome Web Store submission, review the currently applicable user-data requirements, improve at-rest credential/history handling, validate disclosure/consent and provider permissions, and complete a fresh production-browser acceptance run. A passing test or a valid ZIP is not a policy approval.

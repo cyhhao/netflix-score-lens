@@ -18,6 +18,7 @@ import { chromium } from "playwright";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import {MATCHING_VERSION} from '../matching.js';
 
 const root = resolve(import.meta.dirname, "..");
 const out = resolve(process.env.POPUP_IT_OUT || join(root, "artifacts/popup-integration"));
@@ -57,7 +58,7 @@ function fixtureHtml() {
 // `${item.key}|${title}|${year}|${type}|${providerMode}|${hasKey}`.
 const imdbRating = (id, value) => ({ value, scale: 10, provider: "Cinemeta", url: `https://www.imdb.com/title/${id}/` });
 function seededCache(now) {
-  const entry = (c, type, result) => [`nf:${c.id}|${c.title}|${c.year || ""}|${type || ""}|auto|false`, { at: now, ttl: 3_600_000, result: { fetchedAt: now, candidates: [], ...result } }];
+  const entry = (c, type, result) => [`nf:${c.id}|${c.title}|${c.year || ""}|${type || ""}|auto|false`, { at: now, ttl: 3_600_000, matchingVersion: MATCHING_VERSION, result: { fetchedAt: now, candidates: [], ...result } }];
   return Object.fromEntries([
     entry(CARDS.breakingBad, "series", { status: "ok", id: "tt0903747", title: "Breaking Bad", year: 2008, type: "series", ratings: { imdb: imdbRating("tt0903747", 9.5) }, confidence: "localized", matchReason: "IMDb 别名检索 + Netflix 年份/类型；可点击纠错" }),
     entry(CARDS.bright, "movie", { status: "ok", id: "tt5519340", title: "Bright", year: 2017, type: "movie", ratings: { imdb: imdbRating("tt5519340", 6.3) }, confidence: "high", matchReason: "标题一致，年份已核对" }),
