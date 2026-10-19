@@ -1,0 +1,19 @@
+# Score Lens 0.4 implementation contract
+Public MV3 project. Architecture and maintenance boundaries: `AGENTS.md`; store release gates: `docs/chrome-web-store.md`.
+
+## Messaging (runtime.sendMessage, all replies `{ok:true,...}` or `{ok:false,error}`)
+- `GET_CONFIG` → public `{settings,hasApiKey}`; no credential value.
+- `GET_LIBRARY` → trusted extension pages only, `{settings,hasApiKey,items}`. Each item `{itemKey,netflixId,title,result,at,ttl,current,stale}` is derived from `cacheV3`, deduplicated by Netflix ID preferring the current provider-mode/key-present configuration, then recency. Opening/refreshing this view does not query providers. Content-script requests are rejected. Cache clear/mode/Key changes and eviction affect the library; it is not a durable watchlist. `library.*` stores view preferences independently in extension-page localStorage.
+- `GET_UI` → `{settings, hasApiKey, cacheEntries, providerHealth}`. settings: enabled bool, dimLowScores bool, scoreSource auto|imdb|tvmaze|rt|metacritic, minScore numeric on selected native scale (auto/imdb/tvmaze 0..10, rt/mc 0..100), dimOpacity 0.2..0.85, revealOnHover bool, providerMode auto|free. No key returned. providerHealth: object per source with status/message/at.
+- `SAVE_SETTINGS`, `settings` partial → `{settings,hasApiKey}`. Optional top-level `apiKey` nonempty replaces stored credential; `removeApiKey:true` removes. Never send empty input as removal. settings changes broadcast to Netflix immediately, not page reload.
+- `TEST_PROVIDERS` → `{checks:[{name,status:ok|error|not_configured,message}]}` uses saved Key server-side, actual live calls, not optimistic green.
+- `GET_PAGE` sent via chrome.tabs.sendMessage active tab → `{summary:{discovered,visible,matched,pending,ambiguous,unmatched,errors}, items:[{item,result}], url,version}`; item `{key,netflixId,title,year?,type?}` result `{status:ok|ambiguous|not_found|error|no_rating,title,year,type,id,ratings,confidence,matchReason,candidates,warning?,fetchedAt}`. Ratings each `{value,scale,provider,url}`.
+- `RESCAN` to content → ACK immediate, clears page state and refetches (uses persisted good cache).
+- `CLEAR_CACHE` → `{cleared}`; clears cache, broadcasts RESET; retains settings and manual matches.
+- `SEARCH`, `query`, optional `titleType/year` → `{candidates:[{id,title,year,type,provider,url}]}`. UI title search/IMDb id input; selecting candidate only sets binding on explicit user click.
+- `BIND`, `item`, `candidate` → `{result}`; persist override, invalidate only this title's cache, broadcast `RESET` with `key`.
+- `UNBIND`, `item` → clears override, invalidates only this title, broadcasts `RESET` with `key`.
+- `LOOKUP`, `item`, optional `force:true` → `{result}`. `force` bypasses cached errors only, for explicit retry; credentials remain in background.
+- Content `RESET` with optional `key`: reset that title only; without key reset all page results. In-flight work for the old revision cannot repopulate it.
+
+Tabs permission activeTab + storage + Netflix host. popup can chrome.tabs.query active currentWindow and sendMessage; handle missing/restricted/wrong tab with clear actionable message. `chrome.runtime.getManifest().version` displayed. Poll GET_PAGE every 1.5s while popup open (stop pagehide). All user-facing text Chinese. Native sliders, checkboxes accessible labels/tab navigation. Popup <=420px wide and <=600px scrollable Chrome popup, key details collapsed. Settings auto-save (debounced range), state/progress observable. No mock data/no optimistic health/no external assets. Clear attribution IMDb via Cinemeta mirror, TVmaze independent ratings CC BY-SA; OMDb for RT/MC optional, no guarantee every title.

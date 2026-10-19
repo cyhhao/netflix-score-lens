@@ -1,0 +1,30 @@
+# Dependencies and generated output
+node_modules/
+artifacts/
+dist/
+playwright-report/
+test-results/
+*.log
+*.tap
+*.zip
+*.crx
+.DS_Store
+
+# Credentials and local-only configuration
+.env
+.env.*
+!.env.example
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
+*.local.*
+credentials*.json
+storage-state*.json
+
+# Never publish browser profiles or captured browsing data
+profiles/
+user-data/
+chrome-profile/
+owner-*/

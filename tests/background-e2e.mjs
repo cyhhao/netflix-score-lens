@@ -1,0 +1,48 @@
+// Real Chrome extension runtime with deterministic provider responses in its
+// isolated worker. No real API keys; no user profile access.
+import {chromium} from 'playwright';import {mkdtemp,rm,mkdir,writeFile} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join,resolve} from 'node:path';import assert from 'node:assert/strict';
+const root=resolve(import.meta.dirname,'..'),profile=await mkdtemp(join(tmpdir(),'scorelens-bg-'));
+import {executablePath} from './browser.mjs';
+const context=await chromium.launchPersistentContext(profile,{headless:true,executablePath,args:[`--disable-extensions-except=${root}`,`--load-extension=${root}`]});
+const report=[];let failures=0;const check=async(name,fn)=>{try{await fn();report.push({name,passed:true});console.log('PASS',name);}catch(e){failures++;report.push({name,passed:false,error:e.message});console.error('FAIL',name,e.message);}};
+try{
+ const worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker'),id=worker.url().split('/')[2];const popup=await context.newPage();await popup.goto(`chrome-extension://${id}/popup.html`);
+ const send=m=>popup.evaluate(m=>chrome.runtime.sendMessage(m),m);await send({type:'GET_UI'});
+ await worker.evaluate(()=>{
+  globalThis.__fixture={calls:[],delay:0,cinemetaFail:false,tvmazeFail:false,omdbMode:'valid'};
+  globalThis.fetch=async function(input,options={}){
+   const f=globalThis.__fixture,u=new URL(String(input));f.calls.push({host:u.hostname,path:u.pathname,queryTitle:u.searchParams.get('imdb'),credentials:options.credentials});
+   if(f.delay)await new Promise(r=>setTimeout(r,f.delay));
+   let data={};const dark=String(input).includes('tt5753856'),id=dark?'tt5753856':'tt0903747',title=dark?'Dark':'Breaking Bad';
+   if(u.hostname.includes('cinemeta')){
+    if(f.cinemetaFail)return new Response('{}',{status:503});
+    if(u.pathname.includes('/meta/'))data={meta:{id,type:'series',name:title,year:dark?2017:2008,imdbRating:dark?'8.7':'9.5'}};
+    else data={metas:[{id:'tt0903747',type:'series',name:'Breaking Bad',year:2008}]};
+   }else if(u.hostname==='api.tvmaze.com'){
+    if(f.tvmazeFail)return new Response('{}',{status:503});
+    data={id:dark?2:1,name:title,externals:{imdb:id},premiered:dark?'2017-01-01':'2008-01-01',rating:{average:8.2},url:`https://www.tvmaze.com/shows/${dark?2:1}/title`};
+   }else if(u.hostname==='www.omdbapi.com')data=f.omdbMode==='valid'?{Response:'True',imdbID:'tt0903747',Title:'Breaking Bad',Year:'2008',Type:'series',imdbRating:'9.5',Metascore:'87',Ratings:[{Source:'Rotten Tomatoes',Value:'96%'}]}:{Response:'False',Error:'Invalid API key!'};
+   else if(u.hostname==='v3.sg.media-imdb.com')data={d:[{id:'tt0903747',l:'Breaking Bad',y:2008,qid:'tvSeries'}]};
+   else throw Error('Unexpected test URL');
+   return new Response(JSON.stringify(data),{status:u.hostname==='www.omdbapi.com'&&f.omdbMode==='invalid'?401:200,headers:{'Content-Type':'application/json'}});
+  };
+ });
+ const item={title:'Breaking Bad',year:2008,type:'series',netflixId:'70143836'};
+ await check('no-key lookup: IMDb mirror and distinct TVmaze rating',async()=>{const r=await send({type:'LOOKUP',item});assert.equal(r.result.id,'tt0903747');assert.equal(r.result.ratings.imdb.value,9.5);assert.equal(r.result.ratings.tvmaze.value,8.2);assert.equal(r.result.ratings.tvmaze.provider,'TVmaze');});
+ await check('cache hit causes no new network requests',async()=>{const before=await worker.evaluate(()=>__fixture.calls.length);await send({type:'LOOKUP',item});assert.equal(await worker.evaluate(()=>__fixture.calls.length),before);});
+ await check('title search uses titleType, not message type',async()=>{const r=await send({type:'SEARCH',query:'Breaking Bad',titleType:'series',year:2008});assert.equal(r.ok,true);assert.equal(r.candidates[0].id,'tt0903747');});
+ await check('IMDb ID lookup returns a candidate',async()=>{const r=await send({type:'SEARCH',query:'tt0903747',titleType:'series'});assert.equal(r.ok,true);assert.equal(r.candidates[0].title,'Breaking Bad');});
+ await check('manual bind persists and unbind restores automatic result',async()=>{const r=await send({type:'BIND',item,candidate:{id:'tt5753856',title:'Dark',year:2017,type:'series'}});assert.equal(r.result.confidence,'manual');assert.equal(r.result.id,'tt5753856');await send({type:'UNBIND',item});const restored=await send({type:'LOOKUP',item});assert.equal(restored.result.id,'tt0903747');assert.notEqual(restored.result.confidence,'manual');});
+ await check('optional OMDb adds native RT/MC; credential not returned',async()=>{await send({type:'SAVE_SETTINGS',apiKey:'fixture-not-a-secret'});const r=await send({type:'LOOKUP',item});assert.equal(r.result.ratings.rt.value,96);assert.equal(r.result.ratings.metacritic.scale,100);for(const type of ['GET_UI','GET_CONFIG']){const ui=await send({type});assert.equal(ui.hasApiKey,true);assert.equal(JSON.stringify(ui).includes('fixture-not-a-secret'),false);}});
+ await check('invalid Key is explicit but free scores survive',async()=>{await worker.evaluate(()=>__fixture.omdbMode='invalid');await send({type:'CLEAR_CACHE'});const r=await send({type:'LOOKUP',item});assert.equal(r.result.status,'ok');assert.match(r.result.warning,/Key 无效/);const t=await send({type:'TEST_PROVIDERS'});assert.equal(t.checks.find(c=>c.name==='OMDb').status,'error');});
+ await check('remove Key retains free mode, no-key health honest',async()=>{await send({type:'SAVE_SETTINGS',removeApiKey:true});const ui=await send({type:'GET_UI'});assert.equal(ui.hasApiKey,false);const t=await send({type:'TEST_PROVIDERS'});assert.equal(t.checks.find(c=>c.name==='OMDb').status,'not_configured');});
+ await check('one failed provider degrades visibly with short cache TTL',async()=>{await worker.evaluate(()=>__fixture.cinemetaFail=true);await send({type:'BIND',item,candidate:{id:'tt0903747',title:'Breaking Bad',year:2008,type:'series'}});const r=await send({type:'LOOKUP',item});assert.equal(r.result.status,'ok');assert.equal(r.result.ratings.imdb,undefined);assert.ok(r.result.ratings.tvmaze);assert.match(r.result.warning,/部分免费/);const ttls=await worker.evaluate(async()=>Object.values((await chrome.storage.local.get('cacheV3')).cacheV3).map(x=>x.ttl));assert.ok(ttls.every(x=>x<=300000));});
+ await check('all providers fail: error not no_rating; force retry recovers',async()=>{await worker.evaluate(()=>__fixture.tvmazeFail=true);await send({type:'CLEAR_CACHE'});assert.equal((await send({type:'LOOKUP',item})).result.status,'error');await worker.evaluate(()=>{__fixture.tvmazeFail=false;__fixture.cinemetaFail=false;});assert.equal((await send({type:'LOOKUP',item,force:true})).result.status,'ok');});
+ await check('cache clear retains user settings and manual matches',async()=>{await send({type:'SAVE_SETTINGS',settings:{minScore:0}});const r=await send({type:'CLEAR_CACHE'});assert.equal(r.cleared,1);assert.equal((await send({type:'GET_UI'})).settings.minScore,0);assert.equal((await send({type:'LOOKUP',item})).result.confidence,'manual');});
+ await check('disable stops queued work from starting new source requests',async()=>{await send({type:'UNBIND',item});await worker.evaluate(()=>{__fixture.delay=200;__fixture.calls=[];});const requests=Array.from({length:8},(_,i)=>send({type:'LOOKUP',item:{...item,netflixId:String(90000000+i)}}));await new Promise(r=>setTimeout(r,60));await send({type:'SAVE_SETTINGS',settings:{enabled:false}});const rs=await Promise.all(requests);assert.ok(rs.filter(r=>r.result.status==='disabled').length>=4);assert.ok(await worker.evaluate(()=>__fixture.calls.filter(c=>c.path.includes('/catalog/')).length)<=4);await worker.evaluate(()=>__fixture.delay=0);await send({type:'SAVE_SETTINGS',settings:{enabled:true}});});
+ await check('cache clear rejects late writes from old request generation',async()=>{await send({type:'CLEAR_CACHE'});await worker.evaluate(()=>__fixture.delay=150);const p=send({type:'LOOKUP',item});await new Promise(r=>setTimeout(r,80));await send({type:'CLEAR_CACHE'});await p;assert.equal((await send({type:'GET_UI'})).cacheEntries,0);await worker.evaluate(()=>__fixture.delay=0);});
+ await check('legacy credential migration preserves key without public leak',async()=>{await worker.evaluate(()=>chrome.storage.local.set({configVersion:2,credentials:{},settings:{apiKey:'fixture-legacy',minScore:0,scoreSource:'best'}}));const ui=await send({type:'GET_UI'});assert.equal(ui.hasApiKey,true);assert.equal(ui.settings.minScore,0);assert.equal(ui.settings.scoreSource,'auto');const shape=await worker.evaluate(async()=>{const d=await chrome.storage.local.get(['settings','credentials']);return{settingsHasKey:Object.hasOwn(d.settings,'apiKey'),credentialPresent:Boolean(d.credentials.omdb)};});assert.deepEqual(shape,{settingsHasKey:false,credentialPresent:true});assert.equal(JSON.stringify(ui).includes('fixture-legacy'),false);});
+ await check('provider requests explicitly omit cookies',async()=>{assert.ok(await worker.evaluate(()=>__fixture.calls.every(c=>c.credentials==='omit')));});
+ await mkdir(join(root,'artifacts'),{recursive:true});await writeFile(join(root,'artifacts/background-e2e-report.json'),JSON.stringify(report,null,2));
+}finally{await context.close();await rm(profile,{recursive:true,force:true});}
+console.log(`RESULT ${report.length-failures}/${report.length}`);if(failures)process.exitCode=1;

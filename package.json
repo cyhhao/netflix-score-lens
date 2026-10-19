@@ -1,0 +1,18 @@
+{
+  "name": "netflix-score-lens",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Independent Netflix rating overlays and a local score library for Chrome.",
+  "repository": {"type": "git", "url": "https://github.com/cyhhao/netflix-score-lens.git"},
+  "engines": {"node": ">=22"},
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "test:browser": "node tests/e2e.mjs && node tests/background-e2e.mjs && node tests/content-edge.mjs && node tests/library-integration.mjs",
+    "test:live": "node tests/popup-integration.mjs",
+    "package": "python3 scripts/package.py",
+    "store:assets": "node scripts/store-assets.mjs"
+  },
+  "devDependencies": {"playwright": "1.64.1"}
+}

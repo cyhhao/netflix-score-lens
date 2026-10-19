@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Score Lens · 评分库</title>
+  <link rel="stylesheet" href="library.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="mark" aria-hidden="true"></span><div><h1>评分库</h1><p>Netflix Score Lens <span id="version"></span></p></div></div>
+    <div class="top-actions">
+      <button id="openNetflix" class="btn btn-quiet" type="button">打开 Netflix</button>
+      <button id="refresh" class="btn btn-primary" type="button" title="只重新读取本机缓存，不批量请求评分网站">刷新列表</button>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="hero">
+      <div><p class="eyebrow">本机已缓存的作品</p><h2 id="headline">正在读取评分库…</h2><p id="subline" class="muted"></p></div>
+      <div id="keyNotice" class="notice" hidden></div>
+    </section>
+
+    <section class="stats" aria-label="评分库统计">
+      <div class="stat"><span>作品</span><strong id="statTotal">—</strong></div>
+      <div class="stat"><span>有评分</span><strong id="statRated">—</strong></div>
+      <div class="stat"><span>需处理</span><strong id="statAttention">—</strong></div>
+      <div class="stat"><span>低于当前阈值</span><strong id="statLow">—</strong></div>
+    </section>
+
+    <details class="library-help"><summary>数据范围与评分规则</summary><p>这里是本机缓存评分库，不是 Netflix 全量目录。关闭 Netflix 后仍可查看；打开本页不会向评分网站发起查询。缓存最多保留 600 个查询版本，清缓存、切换取分模式或更换 Key 会清空这里的记录，之后浏览 Netflix 时重新积累。</p><p>不填 Key：Cinemeta 提供 IMDb 镜像，剧集可另有 TVmaze 独立评分。有 Key 且启用 OMDb：补充 IMDb、烂番茄与 Metacritic；OMDb 失败保留免费源结果。不是每部作品都有全部评分。</p><p>自动口径依次选择 IMDb → TVmaze → 烂番茄 → Metacritic，不取最高分、不求平均。缺失或未确认评分不算 0 分；评分段在自动口径下换算为 10 分制。本页筛选不改变 Netflix 遮罩设置。</p><p>当前“类别”指电影 / 剧集；资料包括匹配标题、年份、匹配依据、来源与查询时间。作品是否仍在你所在地区的 Netflix 提供，请打开 Netflix 核对。</p></details>
+    <section class="toolbar" aria-label="评分库筛选和排序">
+      <label class="search-wrap"><span class="visually-hidden">搜索作品</span><input id="query" type="search" placeholder="搜索 Netflix 标题或匹配标题" autocomplete="off"></label>
+      <label><span>类别</span><select id="type"><option value="all">全部类别</option><option value="movie">电影</option><option value="series">剧集</option></select></label>
+      <label><span>状态</span><select id="status"><option value="all">全部状态</option><option value="rated">有评分</option><option value="attention">需处理</option><option value="no_rating">暂无评分</option></select></label>
+      <label><span>评分依据</span><select id="source"><option value="auto">自动</option><option value="imdb">IMDb</option><option value="tvmaze">TVmaze</option><option value="rt">烂番茄</option><option value="metacritic">Metacritic</option></select></label>
+      <label><span>排序</span><select id="sort"><option value="score-desc">评分从高到低</option><option value="score-asc">评分从低到高</option><option value="updated-desc">最近更新</option><option value="title-asc">标题 A-Z</option><option value="year-desc">年份从新到旧</option></select></label>
+      <label><span>分组</span><select id="group"><option value="none">不分组</option><option value="type">按类别</option><option value="status">按状态</option><option value="score">按评分段</option></select></label>
+    </section>
+
+    <div class="view-row"><p id="resultMeta" class="muted">—</p><p id="statusMessage" class="status" role="status" aria-live="polite"></p></div>
+    <section id="library" class="library" aria-live="polite"></section>
+    <section id="empty" class="empty" hidden><div class="empty-mark">◈</div><h2>还没有可展示的作品</h2><p>先在 Netflix 页面让评分镜片处理一些卡片，匹配结果会自动出现在这里。</p><button id="clearFilters" class="btn btn-primary" type="button" hidden>清除筛选</button><button id="emptyOpenNetflix" class="btn btn-primary" type="button">打开 Netflix</button></section>
+  </main>
+  <template id="cardTemplate"><article class="card"><div class="card-head"><div class="title-block"><h3 class="local-title"></h3><p class="canonical"></p></div><div class="score-block"><strong class="score"></strong><span class="score-source"></span></div></div><div class="chips"></div><div class="meta"></div><p class="reason"></p><div class="card-actions"><button class="details btn btn-quiet btn-sm" type="button">查看资料</button><button class="netflix btn btn-quiet btn-sm" type="button">Netflix</button></div><div class="details-panel" hidden></div></article></template>
+  <script type="module" src="library.js"></script>
+</body>
+</html>
