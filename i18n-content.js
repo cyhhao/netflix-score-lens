@@ -16,7 +16,7 @@ registerMessages({
   "评分详情": "Rating details",
   "打开评分镜片状态": "Open Score Lens status",
   "关闭详情": "Close details",
-  "评分镜片连接已断开。请刷新页面以恢复评分。": "Score Lens was disconnected. Please refresh the page to restore ratings.",
+  "评分镜片连接已断开。若已重新加载扩展，请刷新页面。": "Score Lens was disconnected. If you reloaded the extension, please refresh this page.",
   "刷新页面": "Refresh page",
   "忽略提示": "Dismiss",
   "◈ 评分镜片 ": "◈ Score Lens ",

@@ -39,7 +39,7 @@ try{
  }
  const idle=await openPage(),pending=await openPage();
  await check('initial low score renders in both tabs',async()=>{for(const {page} of pages)assert.equal(await page.locator('.nsl-low').count(),1);});
- await check('content localization leaves Netflix document language untouched',async()=>{assert.equal(await idle.page.locator('html').getAttribute('lang'),'ja');});
+ await check('content localization leaves Netflix document language untouched',async()=>{assert.equal(await idle.page.locator('html').getAttribute('lang'),'ja');assert.equal(await idle.page.locator('.nsl-layer').getAttribute('lang'),'en');});
  await check('language sync updates HUD brand, aria labels and open panel',async()=>{
    await idle.page.locator('#nsl-root').getByRole('button',{name:'Open Score Lens status'}).click();
    await send({type:'SAVE_SETTINGS',settings:{language:'zh-CN'}});
@@ -47,13 +47,17 @@ try{
    assert.equal(await idle.page.locator('#nsl-root').getByRole('button',{name:'打开评分镜片状态'}).count(),1);
    assert.equal(await idle.page.locator('#nsl-root').getByRole('heading',{name:'评分镜片',exact:true}).count(),1);
    assert.equal(await idle.page.locator('html').getAttribute('lang'),'ja');
+   assert.equal(await idle.page.locator('.nsl-layer').getAttribute('lang'),'zh-CN');
  });
  await send({type:'SAVE_SETTINGS',settings:{language:'en'}});
+ const playback=await openPage();
+ await playback.page.evaluate(()=>{history.pushState({},'', '/watch/99000001');document.querySelector('a').title='playback';});
+ await playback.page.waitForFunction(()=>document.querySelector('#nsl-root')?.hidden&&!document.querySelector('.nsl-layer'));
  await pending.isolated('window.holdLookup=true');
  // Request a content reset to hold a cached reply in flight.
  await worker.evaluate(async()=>{for(const t of await chrome.tabs.query({url:'https://www.netflix.com/*'}))await chrome.tabs.sendMessage(t.id,{type:'RESET'});});
  await pending.page.waitForFunction(()=>document.querySelector('.nsl-chip')?.textContent==='Loading ratings');
- await check('in-flight lookup is held before the real reload',async()=>{assert.equal(await pending.isolated('!!window.lookupHeld'),true);});
+ await check('in-flight lookup is held before the real reload',async()=>{assert.equal(await pending.isolated('!!window.lookupHeld'),true);assert.equal(await pending.isolated('typeof window.releaseLookup'),'function');});
  const beforeStorage=await worker.evaluate(()=>chrome.storage.local.get(['settings','credentials','cacheV3','overrides']));
  const closed=worker.waitForEvent('close');
  await worker.evaluate(()=>{setTimeout(()=>chrome.runtime.reload(),0);});await closed;
@@ -67,8 +71,9 @@ try{
    await idle.page.locator('#nsl-reload-notice').getByRole('button',{name:'Dismiss'}).click();
    assert.equal(await idle.page.locator('#nsl-reload-notice').count(),0);
  });
+ await check('reload during playback stays quiet and never refreshes the player',async()=>{assert.equal(await playback.page.locator('#nsl-reload-notice').count(),0);assert.equal(playback.page.url(),'https://www.netflix.com/watch/99000001');});
  const counters=await Promise.all(pages.map(p=>p.isolated('({...probe})')));
- await pending.isolated('window.releaseLookup?.();true');
+ await pending.isolated('window.releaseLookup();true');
  for(const {page}of pages)await page.evaluate(()=>{window.dispatchEvent(new Event('scroll'));window.dispatchEvent(new Event('resize'));window.dispatchEvent(new Event('online'));window.dispatchEvent(new CustomEvent('nsl:metadata-response',{detail:'{"99000001":{"year":2025,"type":"movie"}}'}));document.querySelector('a').title='changed after reload';});
  await new Promise(resolve=>setTimeout(resolve,3600));
  await check('old timers, DOM events and late replies do not restart work',async()=>{assert.deepEqual(await Promise.all(pages.map(p=>p.isolated('({...probe})'))),counters);for(const {page}of pages)assert.equal(await page.locator('.nsl-layer,.nsl-low,#nsl-root').count(),0);assert.deepEqual(pages.flatMap(p=>p.errors),[]);});

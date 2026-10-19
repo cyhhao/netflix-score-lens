@@ -30,11 +30,11 @@
     if(notify)showReloadNotice();
   }
   function showReloadNotice(){
-    if(document.getElementById('nsl-reload-notice'))return;
+    if(location.pathname.startsWith('/watch/')||document.getElementById('nsl-reload-notice'))return;
     const notice=document.createElement('div');notice.id='nsl-reload-notice';notice.setAttribute('role','status');
     notice.lang=i18n?.getLocale()||'en';
     notice.style.cssText='position:fixed;bottom:20px;right:20px;z-index:2147483000;max-width:380px;padding:14px;border:1px solid #49525d;border-radius:12px;background:#161b23;color:#eee;font:13px/1.6 system-ui;box-shadow:0 3px 16px #0006';
-    const text=document.createElement('div');text.textContent=t('评分镜片连接已断开。请刷新页面以恢复评分。');notice.append(text);
+    const text=document.createElement('div');text.textContent=t('评分镜片连接已断开。若已重新加载扩展，请刷新页面。');notice.append(text);
     for(const [key,action]of [['刷新页面',()=>location.reload()],['忽略提示',()=>notice.remove()]]){
       const button=document.createElement('button');button.type='button';button.textContent=t(key);button.style.cssText='margin:8px 8px 0 0;padding:5px 10px;border:1px solid #69717c;border-radius:6px;background:#252d38;color:#fff;cursor:pointer;font:inherit';button.onclick=action;notice.append(button);
     }
@@ -82,7 +82,7 @@
     const signature=JSON.stringify([record.item.key,r,state.settings,pending]);
     if(a.dataset.nslRender===signature)return;
     a.dataset.nslRender=signature;
-    const layer=createLayer(a),badge=layer.querySelector('.nsl-badges');badge.replaceChildren();
+    const layer=createLayer(a),badge=layer.querySelector('.nsl-badges');layer.lang=i18n.getLocale();badge.replaceChildren();
     const ratings=r?.status==='ok'?Object.entries(r.ratings||{}).filter(([,x])=>Number.isFinite(x.value)):[];
     if(ratings.length){
       for(const [source,rating] of ratings){
