@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "minimum_chrome_version": "120",
   "name": "Netflix Score Lens",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Netflix 评分镜片：免费 IMDb/TVmaze 评分、可选 OMDb、低分遮罩、匹配纠错与独立评分库。",
   "permissions": ["storage", "activeTab"],
   "host_permissions": [

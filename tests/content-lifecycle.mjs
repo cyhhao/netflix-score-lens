@@ -57,7 +57,12 @@ try{
  // Request a content reset to hold a cached reply in flight.
  await worker.evaluate(async()=>{for(const t of await chrome.tabs.query({url:'https://www.netflix.com/*'}))await chrome.tabs.sendMessage(t.id,{type:'RESET'});});
  await pending.page.waitForFunction(()=>document.querySelector('.nsl-chip')?.textContent==='Loading ratings');
- await check('in-flight lookup is held before the real reload',async()=>{assert.equal(await pending.isolated('!!window.lookupHeld'),true);assert.equal(await pending.isolated('typeof window.releaseLookup'),'function');});
+ await check('in-flight lookup is held before the real reload',async()=>{
+   // The pending badge precedes the async cached reply. Wait for the actual
+   // release hook, not merely the loading UI, before invalidating the runtime.
+   await pending.isolated('new Promise((resolve,reject)=>{const deadline=Date.now()+5000;const poll=()=>{if(window.lookupHeld&&typeof window.releaseLookup==="function")return resolve(true);if(Date.now()>=deadline)return reject(Error("Cached lookup reply was not held before reload"));setTimeout(poll,20)};poll()})');
+   assert.equal(await pending.isolated('!!window.lookupHeld'),true);assert.equal(await pending.isolated('typeof window.releaseLookup'),'function');
+ });
  const beforeStorage=await worker.evaluate(()=>chrome.storage.local.get(['settings','credentials','cacheV3','overrides']));
  const closed=worker.waitForEvent('close');
  await worker.evaluate(()=>{setTimeout(()=>chrome.runtime.reload(),0);});await closed;
