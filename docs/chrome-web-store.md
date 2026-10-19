@@ -38,6 +38,7 @@
 
 ### B. 数据源使用权与稳定性（未解决）
 
+- Netflix 英文展示名来自按需匿名读取的公开标题页，不是官方映射 API；公开可读不代表抓取/复用已获授权，需同样核对其条款与稳定性。
 - IMDb suggestion 为未文档化网页检索端点；不是官方授权给此项目的 API。
 - Cinemeta 的 IMDb 评分是镜像，公开可调用不等于有权大规模分发、商用或转许可。
 - OMDb 的用户自带 Key 不替代对其服务/数据条款的核对。
@@ -47,7 +48,7 @@
 
 ### C. 数据披露/许可与品牌（需要最终确认）
 
-自动匹配会把用户遇到的 Netflix 片名或 IMDb ID 发给对应服务，服务还能看到来源 IP；可选 Key 会发给 OMDb。不能把商店隐私栏全部填成“无数据收集”，也不能以“没有项目服务器”为理由省略第三方传输。
+自动匹配会把用户遇到的 Netflix 片名或 IMDb ID 发给对应服务，需要补充英文展示名时还会把作品 ID 发给 Netflix 公开标题页；服务能看到来源 IP，可选 Key 仅发给 OMDb。不能把商店隐私栏全部填成“无数据收集”，也不能以“没有项目服务器”为理由省略第三方传输。
 
 发布前逐项核对 website content、user activity/browsing-related data、authentication information（可选 Key）的当前后台定义，确保与实际代码和隐私政策一致。若处理超出用户对功能的合理预期，需要满足显著披露及明确同意要求。Limited Use/security 认证由发布者核对真实实现后完成，不能由文案代替合规。
 
@@ -71,7 +72,7 @@ Netflix 主页面功能需要登录。若审核方要求测试凭据，需由发
 
 **activeTab** — On the user's explicit popup action, identify the current tab to explain whether Netflix is available, another site is active, or the page is browser-restricted. No global browsing-history permission is requested. Re-evaluate whether this can be removed while preserving diagnostics before store submission.
 
-**www.netflix.com** — Read displayed title names/IDs and requested public year/type metadata; place rating badges and reversible dimming only on Netflix cards.
+**www.netflix.com** — Read displayed title names/IDs and requested public year/type metadata; optionally request a same-ID public English title page with omitted credentials for weak matches; place rating badges and reversible dimming only on Netflix cards.
 
 **v3-cinemeta.strem.io / cinemeta-live.strem.io** — Search metadata and resolve mirrored IMDb scores, including the service's documented-in-code redirect target.
 
@@ -95,9 +96,9 @@ Netflix 主页面功能需要登录。若审核方要求测试凭据，需由发
 
 - 来源独立标注，保留 IMDb/TVmaze 的 10 分制以及烂番茄/Metacritic 的原始尺度。
 - 提供不强制填 Key 的模式，可选用户自己的 OMDb Key 补充来源；部分作品或来源可能缺分。
-- 同名、翻拍、跨语言歧义不会被强制当成可靠匹配，可在弹窗手动核对绑定。
+- 片名匹配会在需要时按请求的 Netflix ID 读取公开英文展示名；不带 Cookie、不执行页面脚本、不保存 HTML。只有同一 ID、英语页、已有年份/类型与唯一 IMDb 候选一致时才自动提高置信度，冲突仍需用户确认。
 - 独立评分库可查看本机已缓存作品，支持搜索、类别/状态筛选、排序、分组及来源资料。
-- 不含广告、分析 SDK 或项目收集服务器；匹配仍会向评分服务发送片名/ID，详见隐私政策。
+- 不含广告、分析 SDK 或项目收集服务器；匹配仍会向评分服务发送片名/ID，必要时也会向 Netflix 公开标题页发送请求中的作品 ID，详见隐私政策。
 
 需要 Netflix 网站登录才能在作品卡片上工作。本机评分库不是 Netflix 全量目录，缓存清理/模式变更会影响记录。该扩展为独立项目，与 Netflix 或评分提供方无关联。具体免费数据源以最终通过发布审查的实现为准。
 

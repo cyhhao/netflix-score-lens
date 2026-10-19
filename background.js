@@ -1,10 +1,17 @@
 import {searchCandidates,resolveCandidate} from './providers.js';
-import {DEFAULTS,cleanSettings,validItem,selectCandidate,candidateInput} from './core.js';
+import {DEFAULTS,cleanSettings,validItem,candidateInput} from './core.js';
+import {MATCHING_VERSION,needsNetflixAlias,matchTitle} from './matching.js';
+import {createNetflixTitleClient} from './netflix-titles.js';
 const VERSION=4, MAX_CACHE=600;
 let health={}, inflight=new Map(), writeQueue=Promise.resolve(), generation=0, active=0, queue=[], cacheMemo=null;
-const itemGenerations=new Map();
+const itemGenerations=new Map(), titleInflight=new Map(), titleClient=createNetflixTitleClient();
+let titleMemo=null, lookupEnabled=true;
 const epochFor=key=>`${generation}:${itemGenerations.get(key)||0}`;
-chrome.storage.onChanged.addListener((changes,area)=>{if(area==='local'&&changes.cacheV3)cacheMemo=changes.cacheV3.newValue||{};});
+function setLookupEnabled(enabled){
+  if(lookupEnabled&&!enabled){generation++;itemGenerations.clear();inflight.clear();titleInflight.clear();}
+  lookupEnabled=enabled;
+}
+chrome.storage.onChanged.addListener((changes,area)=>{if(area!=='local')return;if(changes.cacheV3)cacheMemo=changes.cacheV3.newValue||{};if(changes.netflixTitlesV1)titleMemo=changes.netflixTitlesV1.newValue||{};if(changes.settings)setLookupEnabled(cleanSettings(changes.settings.newValue||{}).enabled);});
 async function cacheRead(){if(cacheMemo===null)cacheMemo=(await chrome.storage.local.get('cacheV3')).cacheV3||{};return cacheMemo;}
 const gate=fn=>new Promise((resolve,reject)=>{queue.push({fn,resolve,reject});pump();});
 function pump(){while(active<4&&queue.length){const q=queue.shift();active++;Promise.resolve().then(q.fn).then(q.resolve,q.reject).finally(()=>{active--;pump();});}}
@@ -22,7 +29,7 @@ async function stored(){
 }
 // Secrets never leave the trusted extension context. Content scripts receive
 // public settings only; Chrome's storage API is restricted to trusted contexts.
-const ready=(async()=>{await chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'});return stored();})();
+const ready=(async()=>{await chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'});const config=await stored();setLookupEnabled(config.settings.enabled);return config;})();
 function publicConfig(c){return {settings:c.settings,hasApiKey:Boolean(c.apiKey)};}
 function libraryEntries(cacheV3,settings,hasApiKey){
   const best=new Map();
@@ -75,7 +82,26 @@ async function broadcast(message){
   const tabs=await chrome.tabs.query({url:['https://www.netflix.com/*']});
   await Promise.all(tabs.map(t=>chrome.tabs.sendMessage(t.id,message).catch(()=>{})));
 }
-async function resetCache(){generation++;itemGenerations.clear();inflight.clear();await serializeWrite(async()=>{await chrome.storage.local.remove('cacheV3');cacheMemo={};});await broadcast({type:'RESET'});}
+async function resetCache(){generation++;itemGenerations.clear();inflight.clear();titleInflight.clear();await serializeWrite(async()=>{await chrome.storage.local.remove(['cacheV3','netflixTitlesV1']);cacheMemo={};titleMemo={};});await broadcast({type:'RESET'});}
+async function netflixTitle(item,epoch){
+  const allowed=()=>epoch===epochFor(item.key)&&lookupEnabled;
+  if(titleMemo===null)titleMemo=(await chrome.storage.local.get('netflixTitlesV1')).netflixTitlesV1||{};
+  const saved=titleMemo[item.netflixId];
+  if(saved&&Date.now()-saved.at<saved.ttl)return saved.result;
+  const key=`${item.netflixId}|${epoch}`;
+  if(titleInflight.has(key))return titleInflight.get(key);
+  const p=titleClient.get(item.netflixId,{allowed}).then(async result=>{
+    if(allowed())await serializeWrite(async()=>{
+      if(!allowed())return;
+      const ttl=result.status==='ok'?7*86400e3:result.status==='error'?60e3:600e3;
+      const titles={...titleMemo,[item.netflixId]:{at:Date.now(),ttl,result}};
+      const next=Object.fromEntries(Object.entries(titles).sort((a,b)=>b[1].at-a[1].at).slice(0,MAX_CACHE));
+      await chrome.storage.local.set({netflixTitlesV1:next});titleMemo=next;
+    });
+    return result;
+  }).finally(()=>{if(titleInflight.get(key)===p)titleInflight.delete(key);});
+  titleInflight.set(key,p);return p;
+}
 async function resetItem(key){
   itemGenerations.set(key,(itemGenerations.get(key)||0)+1);
   for(const k of inflight.keys())if(k.startsWith(`${key}|`))inflight.delete(k);
@@ -98,25 +124,35 @@ async function resolve(item,candidate,config,selection){
 }
 async function performLookup(item,config,epoch){
   const {overrides={}}=await chrome.storage.local.get('overrides');
-  let selection,candidates=[];
+  let selection,candidates=[],alias=null,matchingWarning='';
+  const allowed=()=>epoch===epochFor(item.key)&&lookupEnabled;
   if(overrides[item.key])selection={candidate:candidateInput(overrides[item.key]),confidence:'manual',reason:'你已确认此匹配'};
   else{
-    candidates=await searchCandidates(item.title,{type:item.type,year:item.year});
-    record('Search','ok','标题检索成功');
-    selection=selectCandidate(item,candidates);
+    const match=await matchTitle(item,{search:searchCandidates,getAlias:()=>netflixTitle(item,epoch),allowed});
+    ({selection,candidates,alias}=match);matchingWarning=match.warning||'';
+    record('Search',selection.status==='error'?'error':'ok',selection.status==='error'?'检索失败，请稍后重试':'标题检索成功');
   }
+  if(!allowed()||selection.status==='disabled')return {status:'disabled',ratings:{}};
   let result;
   if(!selection.candidate)result={status:selection.status,type:item.type,year:item.year,ratings:{},candidates:candidates.slice(0,12),matchReason:selection.reason,queryTitle:item.title,fetchedAt:Date.now()};
   else result={...await resolve(item,selection.candidate,config,selection),candidates:candidates.slice(0,12)};
+  if(!allowed())return {status:'disabled',ratings:{}};
+  // Optional title enrichment must not shorten a successful rating's reuse
+  // window and repeatedly consume paid/limited provider quota. Only actual
+  // rating-source failures determine the shorter rating retry interval.
   const ttl=result.status==='ok'?(result.warning?5*60e3:7*86400e3):result.status==='error'?30e3:10*60e3;
-  await cachePut(requestCacheKey(item,config),{at:Date.now(),ttl,result},epoch);
-  return result;
+  if(alias?.status==='ok')result.netflixTitle={title:alias.title,url:alias.url,language:'en'};
+  if(matchingWarning)result.warning=[result.warning,matchingWarning].filter(Boolean).join('；');
+  result.expiresAt=Date.now()+ttl;
+  await cachePut(requestCacheKey(item,config),{at:Date.now(),ttl,result,matchingVersion:MATCHING_VERSION},epoch);
+  return allowed()?result:{status:'disabled',ratings:{}};
 }
 async function lookup(raw,force=false){
   const item=validItem(raw),config=await stored(),key=requestCacheKey(item,config);
-  if(!config.settings.enabled)return {status:'disabled',ratings:{}};
+  if(!config.settings.enabled||!lookupEnabled)return {status:'disabled',ratings:{}};
   const cacheV3=await cacheRead(),entry=cacheV3[key];
-  if(entry&&Date.now()-entry.at<entry.ttl&&!(force&&entry.result.status==='error'))return entry.result;
+  const upgraded=entry?.matchingVersion===MATCHING_VERSION||!needsNetflixAlias(item,entry?.result);
+  if(entry&&upgraded&&Date.now()-entry.at<entry.ttl&&!(force&&entry.result.status==='error'))return entry.result;
   if(inflight.has(key))return inflight.get(key);
   const epoch=epochFor(item.key);
   const p=gate(async()=>{
@@ -150,6 +186,7 @@ async function handle(m,sender){
   if(m.type==='SAVE_SETTINGS'){
     const old=await stored(),settings=cleanSettings({...old.settings,...m.settings});
     const apiKey=m.removeApiKey?'':typeof m.apiKey==='string'&&m.apiKey.trim()?m.apiKey.trim().slice(0,100):old.apiKey;
+    setLookupEnabled(settings.enabled);
     await serializeWrite(async()=>{await chrome.storage.local.set({settings,credentials:{omdb:apiKey}});});
     if(apiKey!==old.apiKey||settings.providerMode!==old.settings.providerMode)await resetCache();
     await broadcast({type:'CONFIG',settings});return {settings,hasApiKey:Boolean(apiKey)};

@@ -1,6 +1,7 @@
 import {t,setLanguage,getLanguage,localizeDOM,localizeMessage,formatDate} from './i18n.js';
 import './i18n-content.js'; // shared backend/cache message dictionary (matchReason, warnings, errors)
 import './i18n-library.js';
+import {netflixTitleUrl} from './core.js';
 
 // Label maps hold canonical Chinese catalog keys; display them through t().
 export const SOURCE_ORDER = {auto:['imdb','tvmaze','rt','metacritic'],imdb:['imdb'],tvmaze:['tvmaze'],rt:['rt'],metacritic:['metacritic']};
@@ -45,7 +46,7 @@ export function filterLibraryItems(items,{query='',type='all',status='all',sourc
     if(status==='rated' && !picked) return false;
     if(status==='attention' && !['ambiguous','not_found','error'].includes(statusValue)) return false;
     if(status==='no_rating' && (picked || ['ambiguous','not_found','error'].includes(statusValue))) return false;
-    return !needle || `${item.title||''} ${result.title||''} ${result.id||''}`.toLowerCase().includes(needle);
+    return !needle || `${item.title||''} ${result.title||''} ${result.netflixTitle?.title||''} ${result.id||''}`.toLowerCase().includes(needle);
   });
 }
 export function sortLibraryItems(items,sort='score-desc',source='auto') {
@@ -146,6 +147,11 @@ function card(item) {
     const line=text=>{ const p=document.createElement('p'); p.textContent=text; detail.append(p); };
     line(t('Netflix 标题：{title}',{title:item.title}));
     if(canonical) line(t('匹配标题：{title}',{title:canonical}));
+    if(result.netflixTitle?.title) {
+      line(t('Netflix 英文展示名：{title}',{title:result.netflixTitle.title}));
+      const url=netflixTitleUrl(result.netflixTitle,item.netflixId);
+      if(url){const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=t('Netflix 标题来源 ↗');detail.append(a);}
+    }
     if(result.id) line(t('IMDb ID：{id}',{id:result.id}));
     if(result.matchReason) line(t('匹配依据：{reason}',{reason:localizeMessage(result.matchReason)}));
     if(result.fetchedAt||item.at) line(t('查询时间：{date}',{date:formatDate(result.fetchedAt||item.at)}));

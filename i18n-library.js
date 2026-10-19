@@ -79,6 +79,8 @@ export const LIBRARY_MESSAGES = Object.freeze({
   '收起资料':'Hide details',
   'Netflix 标题：{title}':'Netflix title: {title}',
   '匹配标题：{title}':'Matched title: {title}',
+  'Netflix 英文展示名：{title}':'Netflix English display title: {title}',
+  'Netflix 标题来源 ↗':'Netflix title source ↗',
   'IMDb ID：{id}':'IMDb ID: {id}',
   '匹配依据：{reason}':'Match basis: {reason}',
   '查询时间：{date}':'Checked: {date}',

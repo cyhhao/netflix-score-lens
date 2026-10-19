@@ -134,6 +134,7 @@ export const POPUP_MESSAGES = Object.freeze({
   "{reason}。": "{reason}.",
   "{reason}。可以在下方用英文原名或 IMDb 链接手动指定。": "{reason}. You can set it below with the original English title or an IMDb link.",
   "没有找到对应作品": "No matching title found",
+  "Netflix 英文展示名：{title}": "Netflix English display title: {title}",
   "获取失败：{warning}。可能是网络或评分源暂时不可用，稍后可点「重新扫描」。": "Lookup failed: {warning}. The network or a rating source may be temporarily unavailable; try “Rescan” later.",
   "获取失败。可能是网络或评分源暂时不可用，稍后可点「重新扫描」。": "Lookup failed. The network or a rating source may be temporarily unavailable; try “Rescan” later.",
   "已找到作品，但评分源暂时没有它的评分。": "Title found, but the rating sources have no rating for it yet.",

@@ -21,7 +21,7 @@ try{
  let ui=await context.newPage();await ui.goto(`chrome-extension://${id}/library.html`);
  const send=m=>ui.evaluate(m=>chrome.runtime.sendMessage(m),m);
  await send({type:'GET_UI'});await send({type:'SAVE_SETTINGS',settings:{language:'en',providerMode:'free',minScore:7}});
- await worker.evaluate(async()=>{globalThis.fetch=()=>{throw Error('Unexpected provider call in lifecycle test');};await chrome.storage.local.set({cacheV3:{'nf:99000001|Lifecycle Demo|2024|movie|free|false':{at:Date.now(),ttl:604800000,result:{status:'ok',title:'Lifecycle Demo',id:'tt99000001',year:2024,type:'movie',ratings:{imdb:{value:5.8,scale:10,provider:'Fixture',url:'https://www.imdb.com/'}},fetchedAt:Date.now()}}}});});
+ await worker.evaluate(async()=>{globalThis.fetch=()=>{throw Error('Unexpected provider call in lifecycle test');};await chrome.storage.local.set({cacheV3:{'nf:99000001|Lifecycle Demo|2024|movie|free|false':{at:Date.now(),ttl:604800000,result:{status:'ok',confidence:'high',title:'Lifecycle Demo',id:'tt99000001',year:2024,type:'movie',ratings:{imdb:{value:5.8,scale:10,provider:'Fixture',url:'https://www.imdb.com/'}},fetchedAt:Date.now()}}}});});
  await context.route('https://www.netflix.com/**',r=>r.fulfill({status:200,contentType:'text/html; charset=utf-8',body:html}));
  const pages=[];
  async function openPage(){

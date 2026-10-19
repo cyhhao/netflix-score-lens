@@ -7,6 +7,7 @@
 
 import { formatDate, getLanguage, getLocale, localizeDOM, localizeMessage, setLanguage, t } from "./i18n.js";
 import "./i18n-popup.js";
+import {netflixTitleUrl} from './core.js';
 
 // A lazily rendered message, so status lines can be redrawn after a language switch.
 const msg = (key, params) => () => t(key, params);
@@ -181,7 +182,7 @@ export function filterEntries(entries, filter, query, pinned = null) {
     if (filter === "attention" && !ATTENTION.has(status)) return false;
     if (filter === "ok" && status !== "ok") return false;
     if (!needle) return true;
-    const haystack = `${entry.item?.title || ""} ${entry.result?.title || ""}`.toLowerCase();
+    const haystack = `${entry.item?.title || ""} ${entry.result?.title || ""} ${entry.result?.netflixTitle?.title || ""}`.toLowerCase();
     return haystack.includes(needle);
   });
 }
@@ -1022,7 +1023,7 @@ function updateRow(row, entry, settingsSig) {
   const status = entryStatus(entry);
   const result = entry.result;
   const picked = status === "ok" || status === "no_rating" ? pickRating(result?.ratings, state.settings?.scoreSource || "auto") : null;
-  const sig = JSON.stringify([status, entry.item.title, result?.title, result?.year, result?.id, result?.ratings, result?.candidates?.length, isManual(row.key, result), settingsSig]);
+  const sig = JSON.stringify([status, entry.item.title, result?.title, result?.netflixTitle?.title, result?.year, result?.id, result?.ratings, result?.candidates?.length, isManual(row.key, result), settingsSig]);
   if (sig !== row.rowSig) {
     row.rowSig = sig;
     row.li.dataset.status = status;
@@ -1099,6 +1100,13 @@ function renderMatch(row, entry, force = false) {
     head.append(left);
     if (manual) head.append(el("span", "manual-tag", t("手动绑定")));
     box.append(head);
+  }
+  const alias = result?.netflixTitle?.title;
+  if (alias) {
+    const provenance = el("p", "match-reason", t("Netflix 英文展示名：{title}", { title: alias }));
+    const url = netflixTitleUrl(result.netflixTitle, item.netflixId);
+    if (url) provenance.append(" · ", link(url, t("Netflix 标题来源 ↗")));
+    box.append(provenance);
   }
   const reason = reasonText(result);
   if (status === "ok" || status === "no_rating") {

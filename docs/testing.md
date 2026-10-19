@@ -11,9 +11,10 @@ npm run package
 node tests/package-smoke.mjs
 ```
 
-- Pure tests cover matching confidence, source scales/thresholds, provider parsing/retry/rate limits, popup state and the library model.
+- Pure tests cover matching confidence, English Netflix-title parsing/enrichment boundaries, source scales/thresholds, provider parsing/retry/rate limits, popup state and the library model.
 - `e2e.mjs` loads the real extension into a disposable browser, serves controlled Netflix-shaped HTML and seeds synthetic results to exercise badges/dimming/recycling.
 - `background-e2e.mjs` replaces provider responses in a real service worker to test cache, sources, binding and credentials boundaries.
+- `matching-integration.mjs` runs synthetic Netflix HTML/provider fixtures through the real MV3 worker: alias rescue, old-cache upgrades, same-ID request deduplication, positive/negative/error cache reuse, cache clearing, pause/resume and binding races, 600-entry eviction, credential omission and bilingual provenance/search UI. These fixtures are not evidence of current Netflix availability.
 - `content-edge.mjs` checks real isolated-world storage/message restrictions, safe public-metadata bridging, async metadata, retries and playback cleanup.
 - `content-lifecycle.mjs` performs a real extension reload in a disposable browser with two old Netflix-shaped browse tabs (one with a delayed lookup reply) and one playback tab. It verifies that the invalidated content contexts stop timers, observers, message listeners and late renders without uncaught exceptions, show a localized refresh notice only outside playback, preserve extension storage, and work again after a page refresh.
 - `library-integration.mjs` seeds synthetic local cache entries and uses the real trusted library page. It checks search/filter/sort/group/detail/state restoration, failure/retry, responsive layout and the popup entry. A narrow `tabs.create` call spy verifies the Netflix destination without depending on an external Netflix redirect; the source links are inspected, not followed. It also temporarily injects a message error to test failure UI.

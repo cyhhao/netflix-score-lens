@@ -4,6 +4,7 @@ Chrome MV3 extension. Source: `https://github.com/cyhhao/netflix-score-lens`. Ru
 
 ## Architecture
 - `core.js`: matching, validation, native scales and thresholds.
+- `matching.js` / `netflix-titles.js`: optional same-ID public English-title enrichment; boundaries and retention in `docs/providers.md`.
 - `providers.js`: no-Key candidates and ratings; `docs/providers.md` explains adapters.
 - `background.js`: queue/cache, credentials, trusted-page messaging, explicit manual bindings and source health.
 - `bridge.js`: requested Netflix ID → public year/type only, never account state.
@@ -14,7 +15,7 @@ Chrome MV3 extension. Source: `https://github.com/cyhhao/netflix-score-lens`. Ru
 ## Invariants
 - No credentials, personal browser profiles, captured browsing history or private verification reports in Git, screenshots, logs or packages.
 - Sources and rating scales stay distinct; absent/ambiguous results never dim. Localized inference needs verified year/type and IMDb rank 0; manual correction remains possible.
-- Netflix IDs are stable binding identities, not an official cross-provider mapping. Reject stale per-title responses.
+- Netflix IDs are stable binding identities, not an official cross-provider mapping. English enrichment requires verified same-ID English markup and a unique exact-title/year/type IMDb candidate; contradictory identities stay unscored. Do not infer premiere year from a public page's latest-season year. Reject stale per-title responses and pause/resume generations; cache clear removes alias records too.
 - Extension reload invalidates old content contexts: stop timers/listeners/observers and remove stale overlays, not just catch runtime errors. Keep the real-reload lifecycle test. Localization must not change the host page's document language.
 - Credentials/library enumeration and mutations are trusted-context-only. This restriction is not at-rest encryption; do not claim it is.
 - Never execute provider responses as code. Changes to data handling, hosts/permissions or retention require privacy/store-documentation review.
