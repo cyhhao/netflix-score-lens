@@ -1,67 +1,96 @@
 # Netflix Score Lens
 
+**English** | [简体中文](README.zh-CN.md)
+
 [![CI](https://github.com/cyhhao/netflix-score-lens/actions/workflows/ci.yml/badge.svg)](https://github.com/cyhhao/netflix-score-lens/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/code-MIT-blue.svg)](LICENSE)
 
-在 Netflix 卡片上显示评分，用可调遮罩弱化低分作品，并在独立评分库中浏览本机已经匹配的作品。
+**Keep the ratings in view. Find your next watch with less tab-switching.**
 
-**Independent Chrome MV3 extension: rating badges, low-score dimming, conservative title matching, and a local score library.** The current UI is Simplified Chinese; matching supports localized titles. No affiliation with Netflix or any rating provider.
+A Chrome extension that adds rating badges to Netflix cards, dims titles below your preferred score, and lets you explore previously matched titles in a separate local library. Free-source mode works without an API key; an optional OMDb key adds more rating sources.
 
-> **当前状态：开源、本地加载可用；尚未在 Chrome Web Store 上架。**
-> 商店材料及专用 ZIP 已准备，但凭据/历史缓存的静态加密、数据披露及第三方数据使用范围仍需完成发布审查，不能把 ZIP 生成成功当成审核通过。见 [上架清单](docs/chrome-web-store.md)。
+[Download the latest release](https://github.com/cyhhao/netflix-score-lens/releases) · [Privacy policy](https://cyhhao.github.io/netflix-score-lens/privacy.html) · [Report an issue](https://github.com/cyhhao/netflix-score-lens/issues)
 
-## 安装
+> **Status:** Open source and available for manual unpacked installation. **Not yet listed in the Chrome Web Store.** Store materials are prepared, but storage security, data disclosures, provider permissions and final acceptance remain release gates. See the [store checklist](docs/chrome-web-store.md) (Chinese).
+>
+> The extension's current UI is **Simplified Chinese**. This English README does not imply an English-localized app. The project is independent and not affiliated with Netflix or any rating provider.
 
-1. 从 [Releases](https://github.com/cyhhao/netflix-score-lens/releases) 下载 `netflix-score-lens-<版本>-unpacked.zip` 并解压。
-2. 打开 `chrome://extensions`，开启开发者模式，点击「加载已解压的扩展程序」。
-3. 选择包含 `manifest.json` 的 `netflix-score-lens` 目录。保留此目录，Chrome 持续从中读取扩展。
-4. 登录 Netflix，刷新浏览页。默认免费源即可工作，不必先配置 Key。
+## Product screenshots
 
-也可克隆本仓库后直接加载仓库根目录；运行扩展本身无需 Node 或 npm。
+These captures use the **real extension UI with clearly labelled synthetic titles and scores**. They contain no personal account, browsing history or API key. The overlay capture uses a controlled demonstration page, **not Netflix's live website**. [How the screenshots are generated](docs/screenshots/README.md).
 
-更新时保留原目录/扩展，在扩展管理页「重新加载」，再刷新 Netflix。不要为了更新先移除扩展，以免丢失本机设置。
+### Ratings on cards, low scores dimmed
 
-## 功能
+Keep sources distinct, dim scores below your threshold, and leave titles with missing ratings untouched. The badges and dimming below are produced by the actual content script.
 
-- **评分角标**：IMDb 镜像、TVmaze 独立评分，以及可选 OMDb 的 IMDb / 烂番茄 / Metacritic。每个来源保留原始尺度。
-- **低分弱化**：选择评分口径和阈值、遮罩强度；支持悬停恢复。缺失或待确认评分不会当成 0 分。
-- **保守匹配**：Netflix ID 标识作品，使用本地化标题、年份与类型匹配 IMDb ID。中日韩名称优先走 IMDb 别名检索，歧义保留给用户确认。
-- **纠错**：在弹窗「作品」中搜索原名、年份、类型或 IMDb ID/链接，明确绑定或恢复自动匹配。
-- **独立评分库**：弹窗顶部进入；无需保持 Netflix 标签页打开。搜索、电影/剧集和状态筛选、评分/标题/年份/时间排序、类别/状态/评分段分组、来源资料与 Netflix 链接。
-- **状态可见**：请求失败、额度/Key 问题、匹配歧义分别提示；支持重试、暂停、来源验证。
+![Actual Score Lens badges and low-score dimming on a labelled demonstration card page](docs/screenshots/ratings-overlay.png)
 
-### 有 Key / 无 Key 的规则
+### A local library you can open independently
 
-| 配置 | 自动取分 |
+Search previously matched titles, select a rating source, sort or group results, and inspect matching details without keeping a Netflix tab open.
+
+![Score Lens independent local library with search, filters, sorting and labelled demo titles](docs/screenshots/library.png)
+
+### Controls within reach
+
+Change the score threshold, dimming strength and hover-to-reveal behavior from the popup. Settings take effect on Netflix without reloading the page.
+
+<img src="docs/screenshots/settings.png" alt="Actual Score Lens popup showing threshold, dimming and hover controls for the demo tab" width="400">
+
+## Features
+
+- **Clearly labelled scores:** IMDb ratings mirrored by Cinemeta, TVmaze's independent show ratings, and optional OMDb-provided IMDb / Rotten Tomatoes / Metacritic scores. Each source keeps its native scale.
+- **Adjustable low-score dimming:** Choose the source, threshold and opacity. Reveal a dimmed card on hover. Missing or unconfirmed scores are never treated as zero.
+- **Conservative matching:** Netflix IDs identify titles; localized names, year and movie/series type help resolve IMDb IDs. Chinese, Japanese and Korean titles use IMDb suggestion/alias search first. Uncertain matches remain open for confirmation.
+- **Manual corrections:** Search by title, year, type, IMDb ID or link, then explicitly bind the correct result or restore automatic matching.
+- **Independent local library:** Search and filter by movie/series or status; sort by score, title, year or update time; group by type, status or score band; inspect sources and open the Netflix title.
+- **Visible status:** Distinguish request failures, missing scores, quota/key issues and ambiguous matches. Pause, retry and test sources explicitly.
+
+## Install
+
+1. Download `netflix-score-lens-<version>-unpacked.zip` from [Releases](https://github.com/cyhhao/netflix-score-lens/releases) and extract it.
+2. Open `chrome://extensions`, enable **Developer mode**, then click **Load unpacked**.
+3. Select the extracted `netflix-score-lens` folder containing `manifest.json`. Keep this folder: Chrome loads the extension from it.
+4. Sign in to Netflix and refresh a browsing page. Free sources work without entering an API key.
+
+Alternatively, clone this repository and load its root folder directly. **Node.js and npm are not needed to run the extension.**
+
+For updates, keep the original installation folder, replace its files, click **Reload** on the extension's management card, then refresh Netflix. Do not uninstall first just to update: that would remove local extension data.
+
+## How ratings work
+
+| Configuration | Automatic score lookup |
 |---|---|
-| 无 Key | Cinemeta 的 IMDb 镜像；剧集另尝试 TVmaze 的独立评分 |
-| 自带 OMDb Key + 开启补充 | 免费源 + 同一 IMDb ID 的 OMDb 结果；重复 IMDb 分数以 OMDb 为准 |
-| 有 Key但选择「仅免费源」 | 自动取分不使用 OMDb；手动「实时验证」仍会测试已配置 Key |
+| No API key | Cinemeta's IMDb mirror; series also try TVmaze's separate rating |
+| Your OMDb key, supplementation enabled | Free sources plus OMDb for the same IMDb ID; OMDb's IMDb score takes precedence when both return one |
+| Key saved, **free sources only** selected | No automatic OMDb lookup; explicit source-health testing still checks the saved key |
 
-优先读有效缓存；正常评分缓存最多 7 天。OMDb 失败保留免费源评分。自动评分口径按 IMDb → TVmaze → 烂番茄 → Metacritic 选第一个可用值，不取最高分、不求平均。明确选择某一来源后，不因缺失而偷偷替换另一来源。
+Valid cache entries are reused first. Successful scores are normally reusable for up to seven days. An OMDb failure does not discard free-source scores.
 
-### 边界
+**Auto** chooses the first available source in this order: **IMDb → TVmaze → Rotten Tomatoes → Metacritic**. It does not average scores or pick the highest one. An explicitly selected source is never silently replaced by another when its score is missing.
 
-- 不是官方 Netflix↔IMDb 映射；同名/翻拍/译名可能需要手动确认。Netflix 未必提供英文原名或完整年份。
-- Cinemeta 是镜像，不是 IMDb 官方评分 API；IMDb 标题建议接口未公开承诺稳定性。第三方可限流、停用或改变条款。
-- 不保证每部作品都有 IMDb、RT 或 Metacritic，也不保证镜像实时更新。
-- 评分库是**最多 600 个查询版本的本机缓存视图**，不是全量 Netflix 目录或永久收藏夹。清缓存、更换 Key、切换取分模式和容量淘汰会移除条目。
-- 类别目前为电影/剧集，不含动作/悬疑等题材标签。Netflix 地区可用性需要打开 Netflix 核对。
-- 本地开发者模式版本不会自动下载更新；Netflix DOM/API 变动可能需要适配。
+## Limitations
 
-## 隐私与数据来源
+- This is not an official Netflix↔IMDb mapping. Remakes, similar names and localized titles may need manual correction; Netflix may not expose an English name or a complete year.
+- Cinemeta is a mirror, not the official IMDb rating API. IMDb's suggestion endpoint has no public stability commitment. Providers may rate-limit, change access or change terms.
+- Not every title has every score, and mirrored ratings may be stale.
+- The library is a **view of up to 600 local cached query variants**, not the complete Netflix catalog or a permanent watchlist. Cache clearing, key changes, provider-mode changes and eviction can remove entries.
+- Categories currently mean **movie / series**, not genres such as action or mystery. Check regional availability on Netflix itself.
+- The unpacked version does not download updates automatically. Netflix DOM or API changes can require maintenance.
 
-[隐私政策](https://cyhhao.github.io/netflix-score-lens/privacy.html) · [第三方声明](THIRD_PARTY_NOTICES.md) · [安全说明](SECURITY.md)
+## Privacy and data sources
 
-扩展仅在 Netflix 读取匹配所需标题、作品 ID、年份和类型；片名/IMDb ID 会发送给相应评分服务，服务可看到请求来源 IP。可选 OMDb Key 仅发送给 OMDb。无项目自有后端、广告、分析 SDK、账户注册或浏览器全历史权限，不读取 Netflix 密码或 Cookie。
+[Privacy policy](https://cyhhao.github.io/netflix-score-lens/privacy.html) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [Security policy](SECURITY.md)
 
-**本地存储不等于加密。** 目前设置、已遇到作品缓存、手动匹配和可选 Key 保存在 Chrome 扩展本地存储；内容脚本无权读取凭据，但这不是操作系统密码库，也未实现应用层静态加密。有本机/浏览器配置访问权的人仍可能读取它们。不应填写其他服务密码或高价值凭据。
+The extension reads the title name, Netflix ID, available year and type needed for matching. **Title names or IMDb IDs are sent to the relevant rating providers**, which can see the requesting IP address. An optional OMDb key is sent only to OMDb. There is no project-operated collection backend, advertising, analytics SDK, account registration or browser-history permission. The extension does not read Netflix passwords or cookies.
 
-MIT 许可只涵盖本项目代码，不替第三方评分数据、商标、海报或 API 使用授权。TVmaze 数据保留其 CC BY-SA 许可及来源归属；其他服务的访问/再分发权需遵循各自条款。
+**Local storage does not mean encrypted storage.** Settings, encountered-title caches, manual bindings and the optional key currently use Chrome's local extension storage. Content scripts cannot read the credentials, but this is not an OS password vault and does not implement application-level encryption at rest. Someone with access to the browser profile or device may still read it. Do not enter another service's password or a high-value credential.
 
-## 开发与测试
+The MIT license covers original project code, not third-party databases, trademarks, posters or API access rights. TVmaze data retains its CC BY-SA terms and attribution. Other providers' access and redistribution terms still apply.
 
-Node.js 22+、Python 3；Chrome 浏览器测试使用临时配置，绝不使用日常浏览器资料或真实 Key。
+## Development and testing
+
+Use Node.js 22+ and Python 3. Browser tests use temporary profiles, never your everyday browser data or a real API key.
 
 ```bash
 npm ci
@@ -71,32 +100,33 @@ npm run test:browser
 npm run package
 ```
 
-Linux 如缺浏览器系统依赖：`npx playwright install --with-deps chromium`。
-可通过 `CHROME_PATH` 或 `CFT_PATH` 指定可加载扩展的浏览器可执行文件，不要传个人 profile。
+On Linux, install browser dependencies if needed with `npx playwright install --with-deps chromium`. Set `CHROME_PATH` or `CFT_PATH` to use another extension-capable browser executable; never pass a personal profile.
 
 ```bash
-# 可选：会访问真实评分服务，可能受网络、限流与覆盖率影响
+# Optional: accesses real providers; subject to network, rate limits and coverage.
 npm run test:live
 PROVIDERS_LIVE=1 node --test tests/providers.test.mjs
+
+# Recreate the README captures using only synthetic data and a disposable browser.
+node scripts/readme-screenshots.mjs
 ```
 
-CI 默认跑单元测试和隔离真实扩展测试，不把第三方 API 的可用性当作每次 PR 的确定性要求。
-测试数据只存在于测试脚本，绝不会打入安装包。[验证范围](docs/testing.md)明确区分 fixture、真实 API 和实际 Netflix 页面验收。
+CI runs unit tests and isolated real-extension checks; third-party uptime is not a deterministic PR requirement. Demo/test data never enters the installation ZIP. [Testing boundaries](docs/testing.md) distinguish fixtures, live API checks and actual Netflix acceptance.
 
-## 打包与上架
+## Packaging and store preparation
 
-`npm run package` 只使用显式文件白名单，生成 `dist/`：
+`npm run package` uses an explicit file allowlist and writes to `dist/`:
 
-- `*-unpacked.zip`：用户解压安装，含顶层目录。
-- `*-chrome-web-store.zip`：`manifest.json` 位于 ZIP 根部，供商店上传；**不是已签名/已审核版本**。
-- `SHA256SUMS.txt`：完整性校验。
+- `*-unpacked.zip`: a user-installable archive with a top-level folder.
+- `*-chrome-web-store.zip`: an upload candidate with `manifest.json` at the ZIP root — **not a signed or store-approved build**.
+- `SHA256SUMS.txt`: integrity checksums.
 
-商店清单、权限用途、数据披露、审核测试说明及材料草案见 [docs/chrome-web-store.md](docs/chrome-web-store.md)。不得将 Key、Netflix 登录资料或个人浏览截图作为公开材料。
+The [Chrome Web Store checklist](docs/chrome-web-store.md) (Chinese) covers permissions, disclosures, reviewer instructions and draft materials. Never publish keys, Netflix login credentials or personal browsing screenshots.
 
-## 贡献
+## Contributing
 
-欢迎 [Issue](https://github.com/cyhhao/netflix-score-lens/issues) 与 PR。请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。安全问题请使用私密漏洞报告，不要公开贴凭据。
+[Issues](https://github.com/cyhhao/netflix-score-lens/issues) and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first. Use private vulnerability reporting for security issues; never post credentials publicly.
 
 ## License
 
-[MIT](LICENSE) — cyhhao and contributors. Netflix、IMDb、Rotten Tomatoes、Metacritic、TVmaze、Stremio 等名称属于各自权利人；本项目没有关联或背书。
+[MIT](LICENSE) — cyhhao and contributors. Netflix, IMDb, Rotten Tomatoes, Metacritic, TVmaze and Stremio are names owned by their respective holders. This project is not affiliated with or endorsed by them.
