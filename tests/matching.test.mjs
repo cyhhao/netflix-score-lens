@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {describe,it} from 'node:test';
 import {matchTitle,needsNetflixAlias,selectNetflixAlias} from '../matching.js';
+import {ProviderError,SearchIncompleteError} from '../providers.js';
 
 const item=(overrides={})=>({title:'绝命毒师',netflixId:'70143836',year:2008,type:'series',...overrides});
 const candidate=(overrides={})=>({id:'tt0903747',title:'Breaking Bad',year:2008,type:'series',provider:'IMDb',rank:0,...overrides});
@@ -104,6 +105,27 @@ describe('Netflix English-title enrichment',()=>{
     const original=candidate({title:'Other'});
     const result=await matchTitle(item(),{search:async title=>{if(title==='Breaking Bad')throw Error();return [original];},getAlias:async()=>alias});
     assert.equal(result.selection.confidence,'localized');assert.equal(result.selection.candidate.title,'Other');assert.match(result.warning,/已保留/);
+  });
+  it('preserves sanitized search failure provenance through matching',async()=>{
+    const failures=[new ProviderError('Cinemeta HTTP 504',{provider:'Cinemeta',url:'https://v3-cinemeta.strem.io/catalog/x',status:504,kind:'http',transient:true}),new ProviderError('IMDb timed out after 8000 ms',{provider:'IMDb',url:'https://v3.sg.media-imdb.com/x',kind:'timeout',transient:true})];
+    const result=await matchTitle(item({netflixId:''}),{search:async()=>{throw new SearchIncompleteError(failures,[]);},getAlias:async()=>alias});
+    assert.equal(result.selection.status,'error');
+    assert.deepEqual(result.diagnostics,[{provider:'Cinemeta',stage:'search',kind:'http',status:504},{provider:'IMDb',stage:'search',kind:'timeout'}]);
+    assert.doesNotMatch(JSON.stringify(result.diagnostics),/https?:|timed out|绝命毒师/);
+    const internal=await matchTitle(item({netflixId:''}),{search:async()=>{throw new TypeError('raw https://secret');},getAlias:async()=>alias});
+    assert.deepEqual(internal.diagnostics,[{provider:'Extension',stage:'search',kind:'internal'}]);
+  });
+  it('records optional alias and English-search failures without changing a good selection',async()=>{
+    for(const [reason,expected] of [['timeout',{kind:'timeout'}],['request_failed',{kind:'network'}],['http_503',{kind:'http',status:503}],['cooldown',{kind:'http'}],[undefined,{kind:'internal'}]]) {
+      const {result}=await run(item(),{'绝命毒师':[candidate({title:'The Healer'})]},{status:'error',reason});
+      assert.equal(result.selection.confidence,'localized');
+      assert.deepEqual(result.diagnostics,[{provider:'Netflix',stage:'title',...expected}]);
+    }
+    const unavailable=await run(item(),{'绝命毒师':[candidate({title:'The Healer'})]},{status:'unavailable',reason:'http_404'});
+    assert.deepEqual(unavailable.result.diagnostics,[]);
+    const failed=await matchTitle(item(),{search:async title=>{if(title==='Breaking Bad')throw new SearchIncompleteError([new ProviderError('x',{provider:'Cinemeta',kind:'network'})],[]);return [candidate({title:'Other'})];},getAlias:async()=>alias});
+    assert.equal(failed.selection.confidence,'localized');
+    assert.deepEqual(failed.diagnostics,[{provider:'Cinemeta',stage:'search',kind:'network'}]);
   });
   it('stops between stages after pause/reset and never starts when disallowed',async()=>{
     let allowed=false,calls=0;

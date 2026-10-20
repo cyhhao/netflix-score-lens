@@ -1,8 +1,8 @@
-import {searchCandidates,resolveCandidate} from './providers.js';
+import {searchCandidates,resolveCandidate,diagnostic,isTransientDiagnostic} from './providers.js';
 import {DEFAULTS,cleanSettings,validItem,candidateInput} from './core.js';
 import {MATCHING_VERSION,needsNetflixAlias,matchTitle} from './matching.js';
 import {createNetflixTitleClient} from './netflix-titles.js';
-const VERSION=4, MAX_CACHE=600;
+const VERSION=4, MAX_CACHE=600, GOOD_TTL=7*86400e3, QUOTA_TTL=86400e3, CONFIG_TTL=3600e3, DEGRADED_TTL=5*60e3, SETTLED_TTL=10*60e3, TRANSIENT_RETRY=30e3, PERMANENT_RETRY=10*60e3;
 let health={}, inflight=new Map(), writeQueue=Promise.resolve(), generation=0, active=0, queue=[], cacheMemo=null;
 const itemGenerations=new Map(), titleInflight=new Map(), titleClient=createNetflixTitleClient();
 let titleMemo=null, lookupEnabled=true;
@@ -46,26 +46,29 @@ function libraryEntries(cacheV3,settings,hasApiKey){
   return [...best.values()].sort((a,b)=>b.at-a.at).map(({itemKey,netflixId,title,result,at,ttl,current})=>({itemKey,netflixId,title,result,at,ttl,current,stale:ttl>0&&Date.now()-at>=ttl}));
 }
 function record(name,status,message){health[name]={status,message,at:Date.now()};}
-async function json(url){
-  try{
-    const r=await fetch(url,{signal:AbortSignal.timeout(10000),credentials:'omit'});
-    // OMDb describes invalid keys / quota exhaustion in JSON even on HTTP 401.
-    const data=await r.json();
-    if(data?.Response==='False')throw Error(omdbError(data));
-    if(!r.ok)throw Error(r.status===429?'请求过快，请稍后重试':`服务返回 HTTP ${r.status}`);
-    return data;
-  }catch(e){if(e.name==='TimeoutError'||e.name==='AbortError')throw Error('请求超时');if(e instanceof TypeError)throw Error('评分服务暂时不可达');if(e instanceof SyntaxError)throw Error('评分服务返回了无法解析的数据');throw e;}
-}
-function omdbError(d){const e=String(d?.Error||''); if(/invalid|no api|not activated/i.test(e)) return 'OMDb Key 无效或尚未通过邮件激活';if(/limit|quota/i.test(e))return 'OMDb 今日额度已用完';return e.includes('not found')?'未找到作品':'OMDb 暂无此作品数据';}
+// OMDb outcomes: only known absence messages are not_found; auth/quota are
+// configuration states; unrecognized or unreadable responses (including another
+// title's data) are parse failures and, like service errors, retried soon.
+// Errors carry a kind and an HTTP status only; never the URL or Key.
+const OMDB_ABSENT=/^(?:(?:movie|series|episode|series or season|series or episode) not found!?|incorrect imdb id\.?|error getting data\.?)$/i;
+const OMDB_MESSAGES={auth:'OMDb Key 无效或尚未通过邮件激活',quota:'OMDb 今日额度已用完',not_found:'未找到作品',timeout:'请求超时',network:'评分服务暂时不可达',parse:'评分服务返回了无法解析的数据'};
+function omdbFailure(kind,status){const e=Error(OMDB_MESSAGES[kind]||(status===429?'请求过快，请稍后重试':`服务返回 HTTP ${status}`));e.kind=kind;e.status=status;return e;}
 async function omdb(id,key){
   const url=new URL('https://www.omdbapi.com/');url.search=new URLSearchParams({apikey:key,i:id,r:'json'});
-  const d=await json(url);
-  if(d.Response!=='True')throw Error(omdbError(d));
-  if(d.imdbID!==id)throw Error('OMDb 返回作品不一致');
+  const aborted=e=>['TimeoutError','AbortError'].includes(e?.name);
+  let r,d;
+  try{r=await fetch(url,{signal:AbortSignal.timeout(10000),credentials:'omit'});}catch(e){throw omdbFailure(aborted(e)?'timeout':'network');}
+  const status=r.ok?undefined:r.status;
+  try{d=await r.json();}catch(e){throw omdbFailure(aborted(e)?'timeout':r.ok?'parse':'http',status);}
+  // OMDb describes invalid keys / quota exhaustion in JSON even on HTTP 401.
+  if(d?.Response==='False'){const e=String(d.Error||'').trim();throw omdbFailure(/invalid api key|no api key|not activated/i.test(e)?'auth':/limit|quota/i.test(e)?'quota':!r.ok?(r.status===401?'auth':'http'):OMDB_ABSENT.test(e)?'not_found':'parse',status);}
+  if(!r.ok)throw omdbFailure(r.status===401?'auth':'http',status);
+  // Identity check: another title's data is a protocol fault, never absence.
+  if(d?.Response!=='True'||d.imdbID!==id)throw omdbFailure('parse');
   const ratings={};
   const add=(source,value,scale)=>{const n=Number(value);if(value!==null&&value!==''&&Number.isFinite(n)&&n>=0&&n<=scale)ratings[source]={value:n,scale,provider:'OMDb',url:source==='imdb'?`https://www.imdb.com/title/${id}/`:source==='rt'?`https://www.rottentomatoes.com/search?search=${encodeURIComponent(d.Title)}`:`https://www.metacritic.com/search/${encodeURIComponent(d.Title)}/`};};
   add('imdb',d.imdbRating,10);add('metacritic',d.Metascore,100);
-  for(const r of d.Ratings||[]) if(r.Source==='Rotten Tomatoes')add('rt',r.Value.replace('%',''),100);
+  for(const r of Array.isArray(d.Ratings)?d.Ratings:[]) if(r?.Source==='Rotten Tomatoes')add('rt',String(r.Value).replace('%',''),100);
   return {ratings,title:d.Title,year:Number(String(d.Year).slice(0,4)),type:d.Type==='series'?'series':'movie'};
 }
 const serializeWrite=fn=>{const p=writeQueue.then(fn,fn);writeQueue=p.catch(()=>{});return p;};
@@ -110,39 +113,56 @@ async function resetItem(key){
 }
 function requestCacheKey(item,config){return `${item.key}|${item.title}|${item.year||''}|${item.type||''}|${config.settings.providerMode}|${Boolean(config.apiKey)}`;}
 async function resolve(item,candidate,config,selection){
-  const data=await resolveCandidate(candidate);
+  // OMDb needs only the IMDb ID, so it runs alongside the free sources.
+  const paid=config.apiKey&&config.settings.providerMode!=='free'?omdb(candidate.id,config.apiKey).then(value=>({value}),error=>({error})):null;
+  const [data,omdbOutcome]=await Promise.all([resolveCandidate(candidate),paid]);
   for(const s of data.sources)record(s.provider,s.status,s.error|| (s.status==='ok'?'请求成功':'此作品暂无评分'));
-  let ratings={...data.ratings}, warning='';
-  if(config.apiKey&&config.settings.providerMode!=='free'){
-    try{const d=await omdb(candidate.id,config.apiKey);ratings={...ratings,...d.ratings};record('OMDb','ok','Key 已验证，连接正常');}
-    catch(e){warning=e.message;record('OMDb','error',warning);}
+  const freeFailure=data.sources.some(s=>s.status==='error'),warnings=[],diagnostics=[...data.diagnostics];
+  let ratings={...data.ratings}, degraded=freeFailure;
+  if(omdbOutcome?.value){ratings={...ratings,...omdbOutcome.value.ratings};record('OMDb','ok','Key 已验证，连接正常');}
+  else if(omdbOutcome){
+    const e=omdbOutcome.error,d=diagnostic({provider:'OMDb',stage:'rating',kind:e.kind,status:e.status});diagnostics.push(d);
+    // "Not found" proves the Key works; it is absent data, not a failure.
+    if(d.kind==='not_found')record('OMDb','ok','Key 已验证，连接正常');
+    else{const message=e.kind?e.message:OMDB_MESSAGES.parse;warnings.push(message);record('OMDb','error',message);degraded||=isTransientDiagnostic(d);}
   }
-  const partialFailure=data.sources.some(s=>s.status==='error');
-  if(partialFailure)warning=[warning,'部分免费评分源暂不可用，将稍后重试'].filter(Boolean).join('；');
-  const status=Object.keys(ratings).length?'ok':partialFailure||warning?'error':'no_rating';
-  return {...data,ratings,status,confidence:selection.confidence,matchReason:selection.reason,warning,fetchedAt:Date.now(),queryTitle:item.title};
+  if(freeFailure)warnings.push('部分免费评分源暂不可用，将稍后重试');
+  const status=Object.keys(ratings).length?'ok':degraded?'error':'no_rating';
+  return {result:{...data,ratings,status,diagnostics,confidence:selection.confidence,matchReason:selection.reason,warning:warnings.join('；'),fetchedAt:Date.now(),queryTitle:item.title},degraded};
+}
+// Reuse/retry boundaries come from structured outcomes, never warning text.
+// Optional title enrichment never shortens a good rating. Non-transient OMDb
+// states never cause a short retry loop, but must recover without user action:
+// an exhausted daily quota after one day; an invalid/unactivated Key or other
+// permanent refusal after one hour (activating the same Key changes no setting).
+// Known absence keeps the full window. Explicit cache clear recovers at once.
+function lifetime(result,degraded){
+  const rating=result.diagnostics.filter(d=>d.stage==='rating');
+  if(result.status==='ok')return degraded?DEGRADED_TTL:rating.some(d=>d.kind==='quota')?QUOTA_TTL:rating.some(d=>d.kind!=='not_found')?CONFIG_TTL:GOOD_TTL;
+  if(result.status!=='error')return SETTLED_TTL;
+  const failures=result.diagnostics.filter(d=>d.stage!=='title');
+  return !failures.length||failures.some(isTransientDiagnostic)?TRANSIENT_RETRY:PERMANENT_RETRY;
 }
 async function performLookup(item,config,epoch){
   const {overrides={}}=await chrome.storage.local.get('overrides');
-  let selection,candidates=[],alias=null,matchingWarning='';
+  let selection,candidates=[],alias=null,matchingWarning='',diagnostics=[];
   const allowed=()=>epoch===epochFor(item.key)&&lookupEnabled;
   if(overrides[item.key])selection={candidate:candidateInput(overrides[item.key]),confidence:'manual',reason:'你已确认此匹配'};
   else{
     const match=await matchTitle(item,{search:searchCandidates,getAlias:()=>netflixTitle(item,epoch),allowed});
-    ({selection,candidates,alias}=match);matchingWarning=match.warning||'';
+    ({selection,candidates,alias,diagnostics}=match);matchingWarning=match.warning||'';
     record('Search',selection.status==='error'?'error':'ok',selection.status==='error'?'检索失败，请稍后重试':'标题检索成功');
   }
   if(!allowed()||selection.status==='disabled')return {status:'disabled',ratings:{}};
-  let result;
-  if(!selection.candidate)result={status:selection.status,type:item.type,year:item.year,ratings:{},candidates:candidates.slice(0,12),matchReason:selection.reason,queryTitle:item.title,fetchedAt:Date.now()};
-  else result={...await resolve(item,selection.candidate,config,selection),candidates:candidates.slice(0,12)};
+  let result,degraded=false;
+  if(!selection.candidate)result={status:selection.status,type:item.type,year:item.year,ratings:{},candidates:candidates.slice(0,12),matchReason:selection.reason,queryTitle:item.title,fetchedAt:Date.now(),diagnostics:[]};
+  else{({result,degraded}=await resolve(item,selection.candidate,config,selection));result.candidates=candidates.slice(0,12);}
   if(!allowed())return {status:'disabled',ratings:{}};
-  // Optional title enrichment must not shorten a successful rating's reuse
-  // window and repeatedly consume paid/limited provider quota. Only actual
-  // rating-source failures determine the shorter rating retry interval.
-  const ttl=result.status==='ok'?(result.warning?5*60e3:7*86400e3):result.status==='error'?30e3:10*60e3;
+  result.diagnostics=[...diagnostics,...result.diagnostics];
+  const ttl=lifetime(result,degraded);
   if(alias?.status==='ok')result.netflixTitle={title:alias.title,url:alias.url,language:'en'};
   if(matchingWarning)result.warning=[result.warning,matchingWarning].filter(Boolean).join('；');
+  if(result.status==='error')result.retryAfterMs=ttl;
   result.expiresAt=Date.now()+ttl;
   await cachePut(requestCacheKey(item,config),{at:Date.now(),ttl,result,matchingVersion:MATCHING_VERSION},epoch);
   return allowed()?result:{status:'disabled',ratings:{}};
@@ -160,8 +180,11 @@ async function lookup(raw,force=false){
     if(epoch!==epochFor(item.key) || !(await stored()).settings.enabled)return {status:'disabled',ratings:{}};
     return performLookup(item,config,epoch);
   }).catch(e=>{
-    record('Search','error','检索失败，请稍后重试');
-    return {status:'error',ratings:{},warning:'评分请求失败，请检查网络后重试',fetchedAt:Date.now()};
+    // Unexpected extension failure: log a sanitized class, never the raw
+    // exception (it may echo URLs or provider data), and back off.
+    const d=diagnostic({provider:'Extension',stage:'extension',kind:'internal'}),now=Date.now();
+    console.warn('Score Lens: lookup failed',{...d,error:/^[A-Za-z]{1,40}$/.test(e?.name||'')?e.name:'Error'});
+    return {status:'error',ratings:{},warning:'评分查询暂未完成，将自动重试',diagnostics:[d],retryAfterMs:PERMANENT_RETRY,fetchedAt:now,expiresAt:now+PERMANENT_RETRY};
   }).finally(()=>{if(inflight.get(key)===p)inflight.delete(key);});
   inflight.set(key,p);return p;
 }

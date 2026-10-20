@@ -8,7 +8,7 @@ Chrome MV3 extension. Source: `https://github.com/cyhhao/netflix-score-lens`. Ru
 - `providers.js`: no-Key candidates and ratings; `docs/providers.md` explains adapters.
 - `background.js`: queue/cache, credentials, trusted-page messaging, explicit manual bindings and source health.
 - `bridge.js`: requested Netflix ID → public year/type only, never account state.
-- `content.*`: current/legacy Netflix cards, viewport work, overlays and HUD.
+- `content.*`: current/legacy cards and expanded mini-modal previews, viewport work, overlays and HUD. Preview identity comes from its title link, never the trailer/episode video ID; reuse the same per-title result.
 - `popup.*`: settings, correction and source diagnosis.
 - `library.*`: read-only independent local cache browser; not a durable watchlist.
 
@@ -18,6 +18,7 @@ Chrome MV3 extension. Source: `https://github.com/cyhhao/netflix-score-lens`. Ru
 - Netflix IDs are stable binding identities, not an official cross-provider mapping. English enrichment requires verified same-ID English markup and a unique exact-title/year/type IMDb candidate; contradictory identities stay unscored. Do not infer premiere year from a public page's latest-season year. Reject stale per-title responses and pause/resume generations; cache clear removes alias records too.
 - Discovery excludes navigation/notification thumbnails and visually hidden cards. Positive rectangles alone do not prove visibility; `aria-hidden` alone does not prove visual hiding. Offscreen genuine cards remain discoverable; only near-viewport, visible cards query metadata/ratings.
 - Extension reload invalidates old content contexts: stop timers/listeners/observers and remove stale overlays, not just catch runtime errors. Keep the real-reload lifecycle test. Localization must not change the host page's document language.
+- Distinguish missing source data from transient failures and Key/quota states. Independent free/OMDb rating fetches run concurrently; error retries back off. Structured diagnostics use only allowlisted provider/stage/kind/HTTP status, never URLs or exception text containing secrets.
 - Credentials/library enumeration and mutations are trusted-context-only. This restriction is not at-rest encryption; do not claim it is.
 - Never execute provider responses as code. Changes to data handling, hosts/permissions or retention require privacy/store-documentation review.
 - Do not restart a contributor's normal browser or bypass tooling restrictions. Browser tests must use disposable profiles.

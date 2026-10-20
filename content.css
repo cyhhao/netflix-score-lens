@@ -4,6 +4,9 @@
 .nsl-shade { position:absolute!important; inset:0!important; border-radius:inherit!important; background:#06090e!important; opacity:0!important; transition:opacity 160ms ease!important; }
 .nsl-low > .nsl-layer > .nsl-shade { opacity:var(--nsl-dim,.62)!important; }
 .nsl-low.nsl-hover-reveal:hover > .nsl-layer > .nsl-shade,.nsl-low.nsl-hover-reveal:focus-within > .nsl-layer > .nsl-shade { opacity:0!important; }
+/* Keep the whole expanded preview revealed while its native controls are hovered. */
+:is([data-uia="modal-motion-container-MINI_MODAL"],.previewModal--container.mini-modal):is(:hover,:focus-within) .nsl-preview.nsl-hover-reveal > .nsl-layer > .nsl-shade { opacity:0!important; }
+.nsl-preview > .nsl-layer { border-radius:inherit!important; }
 .nsl-badges { position:absolute!important; top:6px!important; right:6px!important; display:flex!important; flex-wrap:wrap!important; justify-content:flex-end!important; gap:3px!important; max-width:calc(100% - 12px)!important; pointer-events:auto!important; cursor:help!important; padding:0!important; line-height:1.2!important; border-radius:5px!important; }
 .nsl-badges:focus-visible { outline:2px solid #f2cc7b!important; outline-offset:3px!important; }
 .nsl-chip { display:inline-block!important; color:#f3d18c!important; background:rgba(17,21,28,.96)!important; border:1px solid rgba(232,211,160,.34)!important; border-radius:5px!important; padding:4px 5px!important; font:600 11px/1.25 system-ui,-apple-system,sans-serif!important; white-space:nowrap!important; box-shadow:0 2px 5px #0006!important; text-decoration:none!important; }
