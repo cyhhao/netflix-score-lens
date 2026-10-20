@@ -7,6 +7,7 @@
 
 import { formatDate, getLanguage, getLocale, localizeDOM, localizeMessage, setLanguage, t } from "./i18n.js";
 import "./i18n-popup.js";
+import {diagnosticLines} from './i18n-content.js';
 import {netflixTitleUrl} from './core.js';
 
 // A lazily rendered message, so status lines can be redrawn after a language switch.
@@ -1123,6 +1124,7 @@ function renderMatch(row, entry, force = false) {
       ? t("获取失败：{warning}。可能是网络或评分源暂时不可用，稍后可点「重新扫描」。", { warning })
       : t("获取失败。可能是网络或评分源暂时不可用，稍后可点「重新扫描」。")));
   } else if (warning) box.append(el("p", "match-warning", warning));
+  for (const line of diagnosticLines(result)) box.append(el("p", "match-reason", line));
   if (status === "no_rating") box.append(el("p", "match-reason", t("已找到作品，但评分源暂时没有它的评分。")));
 
   const ratings = normalizeRatings(result?.ratings);

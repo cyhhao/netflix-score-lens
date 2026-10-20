@@ -1,4 +1,5 @@
 import {normalize,selectCandidate} from './core.js';
+import {diagnostic,diagnosticsFor} from './providers.js';
 export const MATCHING_VERSION = 1;
 export function needsNetflixAlias(item, selection) {
   return Boolean(/^\d{4,12}$/.test(item.netflixId || '') && item.year && ['movie','series'].includes(item.type) && !['high','manual'].includes(selection?.confidence));
@@ -17,12 +18,18 @@ function mergeCandidates(first, second) {
 }
 const confirmed = candidate => ({candidate,status:'ok',confidence:'high',reason:'Netflix ID 英文标题 + 年份/类型一致'});
 const conflict = () => ({candidate:null,status:'ambiguous',reason:'原片名与 Netflix 英文标题证据不一致，请确认'});
-const disabled = () => ({selection:{candidate:null,status:'disabled'},candidates:[]});
+const disabled = () => ({selection:{candidate:null,status:'disabled'},candidates:[],diagnostics:[]});
+// Optional Netflix title client reasons → sanitized provenance (no URL/body).
+function aliasDiagnostic(reason) {
+  const http=/^http_(\d{3})$/.exec(reason||'');
+  return diagnostic({provider:'Netflix',stage:'title',kind:http||reason==='cooldown'?'http':{timeout:'timeout',request_failed:'network'}[reason]||'internal',status:http?Number(http[1]):undefined});
+}
 export async function matchTitle(item, {search,getAlias,allowed=()=>true}) {
   if (!allowed()) return disabled();
   let candidates=[], selection, warning='', alias=null;
+  const diagnostics=[];
   try { candidates=await search(item.title,{type:item.type,year:item.year}); selection=selectCandidate(item,candidates); }
-  catch { selection={candidate:null,status:'error',reason:'检索失败，请稍后重试'}; }
+  catch (error) { selection={candidate:null,status:'error',reason:'检索失败，请稍后重试'}; diagnostics.push(...diagnosticsFor(error,'search')); }
   if (!allowed()) return disabled();
   if (needsNetflixAlias(item,selection)) {
     try { alias=await getAlias(item.netflixId); }
@@ -37,7 +44,7 @@ export async function matchTitle(item, {search,getAlias,allowed=()=>true}) {
       } else if (normalize(alias.title)!==normalize(item.title)) {
         let english=[], complete=true;
         try { english=await search(alias.title,{type:item.type,year:item.year}); }
-        catch { complete=false; }
+        catch (error) { complete=false; diagnostics.push(...diagnosticsFor(error,'search')); }
         if (!allowed()) return disabled();
         const chosen=selectNetflixAlias(item,alias,[...english,...candidates]);
         candidates=mergeCandidates(english,candidates);
@@ -48,9 +55,9 @@ export async function matchTitle(item, {search,getAlias,allowed=()=>true}) {
         if (!complete) warning='英文片名检索暂不可用，已保留原片名检索结果';
       }
     } else {
-      if (alias?.status==='error') warning='Netflix 英文标题暂不可用，已回退原片名检索';
+      if (alias?.status==='error') { warning='Netflix 英文标题暂不可用，已回退原片名检索'; diagnostics.push(aliasDiagnostic(alias.reason)); }
       if (alias?.status==='ok') alias={status:'unavailable'};
     }
   }
-  return {selection,candidates,warning,alias};
+  return {selection,candidates,warning,alias,diagnostics};
 }

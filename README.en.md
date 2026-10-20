@@ -40,11 +40,12 @@ Change the score threshold, dimming strength and hover-to-reveal behavior from t
 ## Features
 
 - **Clearly labelled scores:** IMDb ratings mirrored by Cinemeta, TVmaze's independent show ratings, and optional OMDb-provided IMDb / Rotten Tomatoes / Metacritic scores. Each source keeps its native scale.
+- **Expanded hover previews:** Show scores on Netflix's enlarged preview too, reusing the original card's result by title ID without duplicate provider lookups. Native Play and My List controls remain usable.
 - **Adjustable low-score dimming:** Choose the source, threshold and opacity. Reveal a dimmed card on hover. Missing or unconfirmed scores are never treated as zero.
 - **Conservative matching:** Netflix IDs identify titles. When the initial title search is not enough to confirm a match, the extension may read that ID's public English display title with an anonymous, cookie-free request, then require an exact year/type check against a unique IMDb candidate. Conflicts remain manual; it does not crawl the catalog or store HTML.
 - **Manual corrections:** Search by title, year, type, IMDb ID or link, then explicitly bind the correct result or restore automatic matching.
 - **Independent local library:** Search and filter by movie/series or status; sort by score, title, year or update time; group by type, status or score band; inspect sources and open the Netflix title.
-- **Visible status:** Distinguish request failures, missing scores, quota/key issues and ambiguous matches. Pause, retry and test sources explicitly.
+- **Visible status:** Distinguish request failures, missing scores, quota/key issues and ambiguous matches; details identify the source and lookup stage. Repeated failures back off automatically, with manual retry available. Free and OMDb scores are fetched concurrently, and missing title data is not reported as a network outage.
 
 ## Install
 

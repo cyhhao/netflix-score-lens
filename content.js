@@ -1,8 +1,10 @@
 (() => {
   if(window.__scoreLensInstance){window.__scoreLensInstance.scan();return;}
   const SELECTOR='a[data-uia="standard-card"],a[href*="?jbv="],a[href*="&jbv="],a[href*="/title/"],.title-card a[href*="/watch/"]';
-  const state={settings:null,records:new Map(),results:new Map(),pending:new Set(),failAt:new Map(),metadata:{},revisions:new Map(),epoch:0,url:location.href,ready:false};
-  let core,i18n,scanTimer,activeLookups=0,host,panel,stats,btn,observer,intersection,heartbeat,version='',stopped=false;
+  const PREVIEW='[data-uia="modal-motion-container-MINI_MODAL"],.previewModal--container.mini-modal';
+  const MEDIA='[data-uia="previewModal--player_container"],.previewModal--player_container';
+  const state={settings:null,records:new Map(),results:new Map(),pending:new Set(),failAt:new Map(),failures:new Map(),metadata:{},revisions:new Map(),epoch:0,url:location.href,ready:false};
+  let core,i18n,diagnosticLines=()=>[],scanTimer,activeLookups=0,host,panel,stats,btn,observer,intersection,heartbeat,version='',stopped=false;
   const instance={scan};
   const invalidated=error=>/Extension context invalidated/i.test(error?.message||'');
   function live(){
@@ -24,7 +26,7 @@
     window.removeEventListener('online',online);window.removeEventListener('nsl:metadata-response',metadataResponse);
     try{chrome.runtime.onMessage.removeListener(onMessage);}catch(error){if(!invalidated(error))console.warn('Score Lens:',error);}
     for(const [a]of state.records)removeDecoration(a);
-    state.records.clear();state.pending.clear();state.results.clear();state.failAt.clear();state.revisions.clear();state.metadata={};
+    state.records.clear();state.pending.clear();state.results.clear();state.failAt.clear();state.failures.clear();state.revisions.clear();state.metadata={};
     host?.remove();
     if(window.__scoreLensInstance===instance)delete window.__scoreLensInstance;
     if(notify)showReloadNotice();
@@ -50,20 +52,38 @@
   const typeLabel=type=>t(type==='series'?'剧集':'电影');
   // Notification thumbnails are navigation, not browse cards. Their hidden
   // popover retains positive rectangles within the viewport; geometry is not visibility.
-  const nonCard=el=>Boolean(el.closest('[data-uia^="navigation+notifications"]'));
+  const previewRoot=el=>el.matches(MEDIA)?el.closest(PREVIEW):null;
+  const nonCard=el=>Boolean(el.closest('[data-uia^="navigation+notifications"]'))||Boolean(el.matches('a')&&el.closest(PREVIEW));
   const hidden=el=>Boolean(el.closest('[hidden]'))||!el.getClientRects().length||getComputedStyle(el).visibility!=='visible';
   const near=el=>{const r=el.getBoundingClientRect();return r.width>0&&r.height>0&&r.right>0&&r.left<innerWidth&&r.bottom>-100&&r.top<innerHeight+220&&!hidden(el);};
-  const nfId=a=>{try{const u=new URL(a.href);return u.searchParams.get('jbv')||u.pathname.match(/\/(?:title|watch)\/(\d+)/)?.[1]||'';}catch{return '';}};
+  const linkId=a=>{try{const u=new URL(a.href);return u.searchParams.get('jbv')||u.pathname.match(/\/(?:title|watch)\/(\d+)/)?.[1]||'';}catch{return '';}};
+  function nfId(el){
+    const root=previewRoot(el);if(!root)return linkId(el);
+    // The player video ID can identify a trailer or episode, not the title.
+    const ids=[...new Set([...root.querySelectorAll('a[href*="/title/"],a[href*="?jbv="],a[href*="&jbv="]')].map(linkId).filter(id=>/^\d{4,12}$/.test(id)))];
+    return ids.length===1?ids[0]:'';
+  }
   const statusLabels={pending:'查询中',ambiguous:'待确认',not_found:'未找到',error:'重试',no_rating:'暂无评分'};
   function itemFor(a){
     if(nonCard(a)||hidden(a))return null;
-    const title=(a.getAttribute('aria-label')||a.getAttribute('title')||a.querySelector('img')?.alt||a.querySelector('.fallback-text')?.textContent||'').trim();
+    const root=previewRoot(a),id=nfId(a);let title;
+    if(root){
+      if(!id)return null;
+      const names=[...new Set([...root.querySelectorAll('img.previewModal--boxart[alt]')].map(img=>img.alt.trim()).filter(Boolean))];
+      if(names.length!==1)return null;
+      const source=[...state.records].find(([el,r])=>!previewRoot(el)&&el.isConnected&&r.item.netflixId===id)?.[1]?.item;
+      const previous=state.records.get(a)?.item;
+      // Bind a preview to an already encountered title, even when the original
+      // card is virtualized away. Never query a new ID with a stale poster name.
+      title=source?.title||(previous?.netflixId===id?previous.title:null)||state.results.get(`nf:${id}`)?.queryTitle;
+      if(!title||core.normalize(title)!==core.normalize(names[0]))return null;
+    }else title=(a.getAttribute('aria-label')||a.getAttribute('title')||a.querySelector('img')?.alt||a.querySelector('.fallback-text')?.textContent||'').trim();
     if(!title)return null;
-    const id=nfId(a),m=state.metadata[id]||{};
+    const m=state.metadata[id]||{};
     try{return core.validItem({title,netflixId:id,...m});}catch{return null;}
   }
   function removeDecoration(a){
-    a.classList.remove('nsl-card','nsl-low','nsl-hover-reveal');
+    a.classList.remove('nsl-card','nsl-low','nsl-hover-reveal','nsl-preview');
     a.querySelector(':scope > .nsl-layer')?.remove();
     if(a.dataset.nslPosition){a.style.position=a.dataset.nslOriginalPosition||'';delete a.dataset.nslPosition;delete a.dataset.nslOriginalPosition;}
     a.style.removeProperty('--nsl-dim');delete a.dataset.nslRender;
@@ -71,11 +91,11 @@
   function createLayer(a){
     let layer=a.querySelector(':scope > .nsl-layer');if(layer)return layer;
     if(getComputedStyle(a).position==='static'){a.dataset.nslPosition='1';a.dataset.nslOriginalPosition=a.style.position;a.style.position='relative';}
-    a.classList.add('nsl-card');
+    a.classList.add('nsl-card');a.classList.toggle('nsl-preview',Boolean(previewRoot(a)));
     layer=document.createElement('span');layer.className='nsl-layer';
     const dim=document.createElement('span');dim.className='nsl-shade';dim.setAttribute('aria-hidden','true');
     const badge=document.createElement('span');badge.className='nsl-badges';badge.setAttribute('role','button');badge.tabIndex=0;
-    const open=e=>{e.preventDefault();e.stopPropagation();const record=state.records.get(a);if(record)showDetail(record.item);};
+    const open=e=>{e.preventDefault();e.stopPropagation();const record=state.records.get(a);if(record&&JSON.stringify(itemFor(a))===JSON.stringify(record.item))showDetail(record.item);else{removeDecoration(a);schedule();}};
     badge.addEventListener('click',open);badge.addEventListener('keydown',e=>{if(['Enter',' '].includes(e.key))open(e);});
     badge.addEventListener('mouseenter',e=>e.stopPropagation());
     layer.append(dim,badge);a.append(layer);return layer;
@@ -83,6 +103,7 @@
   function render(a,record){
     if(stopped||!a.isConnected)return;
     if(!state.settings?.enabled||hidden(a)){removeDecoration(a);return;}
+    if(JSON.stringify(itemFor(a))!==JSON.stringify(record.item)){removeDecoration(a);schedule();return;}
     const r=state.results.get(record.item.key),pending=state.pending.has(record.item.key);
     const signature=JSON.stringify([record.item.key,r,state.settings,pending]);
     if(a.dataset.nslRender===signature)return;
@@ -111,7 +132,7 @@
     for(const [key]of items){const r=state.results.get(key);if(state.pending.has(key))s.pending++;else if(r?.status==='ok')s.matched++;else if(r?.status==='ambiguous')s.ambiguous++;else if(r?.status==='error')s.errors++;else if(r)s.unmatched++;}
     return {summary:s,items:[...items.values()].map(item=>({item,result:state.results.get(item.key)||{status:state.pending.has(item.key)?'pending':'waiting',ratings:{}}})),url:location.href,version};
   }
-  function updateStats(){if(stopped||!stats)return;const s=summary().summary;stats.textContent=!state.settings?.enabled?t('已暂停'):s.pending?t('{matched} 已匹配 · {pending} 查询中',{matched:s.matched,pending:s.pending}):`${t('{matched} 已匹配',{matched:s.matched})}${s.ambiguous?t(' · {ambiguous} 待确认',{ambiguous:s.ambiguous}):''}${s.errors?t(' · 请求失败'):''}`;}
+  function updateStats(){if(stopped||!stats)return;const s=summary().summary;stats.textContent=!state.settings?.enabled?t('已暂停'):s.pending?t('{matched} 已匹配 · {pending} 查询中',{matched:s.matched,pending:s.pending}):`${t('{matched} 已匹配',{matched:s.matched})}${s.ambiguous?t(' · {ambiguous} 待确认',{ambiguous:s.ambiguous}):''}${s.errors?t(' · {errors} 部暂未取到评分',{errors:s.errors}):''}`;}
   function localizeHud(){
     if(!host)return;
     host.lang=i18n.getLocale();panel.setAttribute('aria-label',t('评分详情'));
@@ -130,7 +151,7 @@
   }
   function basePanel(title){panel.replaceChildren();panel.hidden=false;const close=document.createElement('button');close.id='close';close.textContent='×';close.setAttribute('aria-label',t('关闭详情'));close.onclick=()=>{panel.hidden=true;btn.focus();};const h=document.createElement('h3');h.textContent=title;panel.append(close,h);}
   function p(text){const e=document.createElement('p');e.textContent=text;panel.append(e);}
-  function showStatus(){if(!live())return;panel.dataset.view='status';delete panel.dataset.itemKey;const s=summary().summary;basePanel(t('评分镜片'));p(t('识别 {discovered} 部 · 匹配 {matched} 部 · 待确认 {ambiguous} 部',{discovered:s.discovered,matched:s.matched,ambiguous:s.ambiguous}));p(t('仅查询视口附近作品，滚动页面自动继续。点击卡片评分可看来源。'));p(t('打开工具栏「Netflix Score Lens」可调阈值、检查评分源、手动修正匹配。'));if(!s.discovered)p(t('未识别到卡片：请进入已登录的 Netflix 首页、电影、节目或搜索页。'));}
+  function showStatus(){if(!live())return;panel.dataset.view='status';delete panel.dataset.itemKey;const s=summary().summary;basePanel(t('评分镜片'));p(t('识别 {discovered} 部 · 匹配 {matched} 部 · 待确认 {ambiguous} 部',{discovered:s.discovered,matched:s.matched,ambiguous:s.ambiguous}));p(t('仅查询视口附近作品，滚动页面自动继续。点击卡片评分可看来源。'));if(s.errors)p(t('部分作品暂未取到评分，不影响其他评分。进入视口后会逐步延长间隔重试，也可打开详情手动重试。'));p(t('打开工具栏「Netflix Score Lens」可调阈值、检查评分源、手动修正匹配。'));if(!s.discovered)p(t('未识别到卡片：请进入已登录的 Netflix 首页、电影、节目或搜索页。'));}
   function showDetail(item){
     if(!live())return;
     panel.dataset.view='detail';panel.dataset.itemKey=item.key;
@@ -142,7 +163,8 @@
     }
     p(r?.title?`${r.title} · ${r.year||t('未知年份')} · ${typeLabel(r.type)}`:t(statusLabels[r?.status]||'等待查询'));
     if(r?.matchReason)p(localizeMessage(r.matchReason));if(r?.warning)p(localizeMessage(r.warning));
-    if(r?.status==='error'){const retry=document.createElement('button');retry.textContent=t('重新查询');retry.onclick=()=>{state.failAt.delete(item.key);panel.hidden=true;schedule();};panel.append(retry);}
+    for(const line of diagnosticLines(r))p(line);
+    if(r?.status==='error'){const retry=document.createElement('button');retry.textContent=t('重新查询');retry.onclick=()=>{state.failAt.delete(item.key);state.failures.delete(item.key);panel.hidden=true;schedule();};panel.append(retry);}
     for(const [source,rating]of Object.entries(r?.ratings||{})){
       let url;try{url=new URL(rating.url);}catch{continue;}if(!['www.imdb.com','www.tvmaze.com','www.rottentomatoes.com','www.metacritic.com'].includes(url.hostname)||url.protocol!=='https:')continue;
       const row=document.createElement('p'),a=document.createElement('a');a.href=url.href;a.target='_blank';a.rel='noopener noreferrer';a.textContent=`${source==='metacritic'?'MC':source==='rt'?'RT':label(source)} ${core.formatRating({source,...rating})}`;row.append(a,document.createTextNode(` · ${t('来源')} ${rating.provider}`));panel.append(row);
@@ -154,9 +176,10 @@
   function scan(){
     if(!live()||!state.ready)return;
     state.url=location.href;
-    for(const [a]of state.records)if(!a.isConnected||!a.matches(SELECTOR)||!itemFor(a)){removeDecoration(a);state.records.delete(a);intersection.unobserve(a);}
+    for(const [a]of state.records)if(!a.isConnected||(!a.matches(SELECTOR)&&!previewRoot(a))||!itemFor(a)){removeDecoration(a);state.records.delete(a);intersection.unobserve(a);}
     if(location.pathname.startsWith('/watch/')){for(const [a]of state.records)removeDecoration(a);host.hidden=true;return;}host.hidden=false;
     const links=[...document.querySelectorAll(SELECTOR)].filter(a=>!nonCard(a)&&(a.querySelector('img')||a.matches('[data-uia=standard-card]')));
+    for(const root of document.querySelectorAll(PREVIEW)){const media=root.querySelector(MEDIA);if(media&&!links.includes(media))links.push(media);}
     const metadataIds=[...new Set(links.filter(near).map(nfId).filter(id=>id&&!state.metadata[id]?.year))];
     for(let i=0;i<metadataIds.length;i+=200)window.dispatchEvent(new CustomEvent('nsl:metadata-request',{detail:JSON.stringify(metadataIds.slice(i,i+200))}));
     for(const a of links){
@@ -170,7 +193,7 @@
           state.revisions.set(item.key,(state.revisions.get(item.key)||0)+1);
           state.pending.delete(item.key);
           state.results.delete(item.key);
-          state.failAt.delete(item.key);
+          state.failAt.delete(item.key);state.failures.delete(item.key);
         }
       }
         record={item};state.records.set(a,record);intersection.observe(a);
@@ -183,7 +206,8 @@
   function missingResult(key){
     const r=state.results.get(key);
     const stale=r?.expiresAt?Date.now()>=r.expiresAt:r?.fetchedAt&&Date.now()-r.fetchedAt>(r.warning?300000:r.status==='ok'?7*86400000:600000);
-    return (!r||stale||r.status==='error'||r.status==='disabled')&&!state.pending.has(key)&&Date.now()-(state.failAt.get(key)||0)>30000;
+    const delay=Math.max(Number(r?.retryAfterMs)||0,Math.min(15*60000,30000*2**Math.min(5,Math.max(0,(state.failures.get(key)||1)-1))));
+    return (!r||stale||r.status==='error'||r.status==='disabled')&&!state.pending.has(key)&&Date.now()-(state.failAt.get(key)||0)>delay;
   }
   function drain(){
     if(!live()||!state.settings?.enabled||location.pathname.startsWith('/watch/'))return;
@@ -195,12 +219,13 @@
       (async()=>{
         let result;
         try{const response=await send({type:'LOOKUP',item,force:state.results.get(item.key)?.status==='error'});if(!response.ok)throw Error(response.error);result=response.result;}
-        catch(error){if(invalidated(error)||!live()){stop(true);return;}result={status:'error',ratings:{},warning:'扩展连接已断开，请刷新 Netflix 标签页'};}
+        catch(error){if(invalidated(error)||!live()){stop(true);return;}result={status:'error',ratings:{},warning:'评分查询暂未完成，将自动重试',diagnostics:[{provider:'Extension',stage:'extension',kind:'internal'}]};}
         if(!live()||epoch!==state.epoch||revision!==(state.revisions.get(item.key)||0))return;
         state.pending.delete(item.key);
         const stillCurrent=[...state.records].some(([a,r])=>a.isConnected&&JSON.stringify(r.item)===JSON.stringify(item));
         if(!stillCurrent||result.status==='disabled')return;
-        if(result.status==='error')state.failAt.set(item.key,Date.now());
+        if(result.status==='error'){state.failAt.set(item.key,Date.now());state.failures.set(item.key,(state.failures.get(item.key)||0)+1);}
+        else{state.failAt.delete(item.key);state.failures.delete(item.key);}
         state.results.set(item.key,result);
         for(const[a,r]of state.records)if(r.item.key===item.key)render(a,r);
         updateStats();
@@ -208,8 +233,8 @@
     }
   }
   function reset(key){
-    if(key){state.revisions.set(key,(state.revisions.get(key)||0)+1);state.pending.delete(key);state.results.delete(key);state.failAt.delete(key);}
-    else{state.epoch++;state.revisions.clear();state.pending.clear();state.results.clear();state.failAt.clear();}
+    if(key){state.revisions.set(key,(state.revisions.get(key)||0)+1);state.pending.delete(key);state.results.delete(key);state.failAt.delete(key);state.failures.delete(key);}
+    else{state.epoch++;state.revisions.clear();state.pending.clear();state.results.clear();state.failAt.clear();state.failures.clear();}
     for(const[a,r]of state.records)if(!key||r.item.key===key)delete a.dataset.nslRender;schedule();
   }
   function onMessage(m,_s,reply){
@@ -227,13 +252,13 @@
     if(['RESCAN','RESET'].includes(m.type)){reset(m.type==='RESET'?m.key:undefined);reply({ok:true});return false;}
     return false;
   }
-  function online(){if(!live())return;for(const[key,r]of state.results)if(r.status==='error')state.failAt.delete(key);schedule();}
+  function online(){if(!live())return;for(const[key,r]of state.results)if(r.status==='error'){state.failAt.delete(key);state.failures.delete(key);}schedule();}
   function metadataResponse(e){if(!live())return;try{const data=JSON.parse(e.detail);let changed=false;for(const[id,v]of Object.entries(data))if(/^\d{4,12}$/.test(id)&&v&&['movie','series'].includes(v.type)){const next={year:Number.isInteger(v.year)&&v.year>=1880&&v.year<=2100?v.year:null,type:v.type};if(JSON.stringify(state.metadata[id])!==JSON.stringify(next)){state.metadata[id]=next;changed=true;}}if(changed)schedule();}catch{}}
   (async()=>{
     if(!live())return;
     const base=chrome.runtime.getURL('');version=chrome.runtime.getManifest().version;
     i18n=await import(`${base}i18n.js`);
-    await import(`${base}i18n-content.js`);
+    ({diagnosticLines}=await import(`${base}i18n-content.js`));
     core=await import(`${base}core.js`);
     if(!live())return;
     const r=await send({type:'GET_CONFIG'});if(!live())return;if(!r?.ok)throw Error(t('配置读取失败'));state.settings=core.cleanSettings(r.settings);i18n.setLanguage(state.settings.language);

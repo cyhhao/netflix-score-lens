@@ -13,9 +13,24 @@ Public MV3 project. Architecture and maintenance boundaries: `AGENTS.md`; store 
 - `SEARCH`, `query`, optional `titleType/year` → `{candidates:[{id,title,year,type,provider,url}]}`. UI title search/IMDb id input; selecting candidate only sets binding on explicit user click.
 - `BIND`, `item`, `candidate` → `{result}`; persist override, invalidate only this title's cache, broadcast `RESET` with `key`.
 - `UNBIND`, `item` → clears override, invalidates only this title, broadcasts `RESET` with `key`.
-- `LOOKUP`, `item`, optional `force:true` → `{result}`. `force` bypasses cached errors only, for explicit retry; credentials remain in background. A successful `result.netflixTitle` has `{title,url,language:'en'}` and records the verified public English Netflix display title used for matching; no HTML is returned or stored.
+- `LOOKUP`, `item`, optional `force:true` → `{result}`. `force` bypasses cached errors only, for manual retry or a content retry whose cooldown has elapsed; credentials remain in background. A successful `result.netflixTitle` has `{title,url,language:'en'}` and records the verified public English Netflix display title used for matching; no HTML is returned or stored.
 - Content `RESET` with optional `key`: reset that title only; without key reset all page results. In-flight work for the old revision cannot repopulate it. Pause invalidates in-flight generations even when quickly resumed.
 - New results carry `expiresAt`, the retry/reuse boundary used by content scripts; legacy results use the previous fetchedAt-based fallback.
 - Automatic matching may perform an anonymous `GET https://www.netflix.com/title/{netflixId}` with credentials omitted when the item has a Netflix ID, year and type and its current result is not high/manual confidence. The response must verify the same ID, an English page, one h1 and public deep-link evidence; title aliases are cached separately (bounded to 600 entries, positive TTL seven days, unavailable ten minutes, request error one minute), and clear-cache removes them. It never crawls the catalog, executes scripts or stores HTML.
+
+Results may include local-only `diagnostics:[{provider,stage,kind,status?}]`, with allowlisted provider names, stage `search|rating|title|extension`, kind `timeout|network|http|parse|auth|quota|not_found|internal`, and optional numeric HTTP status. They contain no request URLs, credentials or raw exceptions. `not_found` is informational, not a source outage. Error results expose `retryAfterMs` and `expiresAt`; content automatic retries use the greater of that hint and a 30s/60s/120s/... backoff capped at 15 minutes. Manual retry or coming online resets the page's backoff. Cached good ratings are not forced to refresh by these actions.
+
+Expanded MINI_MODAL previews use a unique `/title/{id}` (or `jbv`) link and a poster matching an already-encountered title, not the playable trailer/episode ID. Their media-area badge shares the same per-title lookup/result as the original card. Native controls remain usable; recycled/hidden/paused/playback previews remove stale decoration. A preview must not add a duplicate discovered title or a duplicate provider lookup.
+
+| Result | Lifetime |
+|---|---|
+| Good rating | 7 days |
+| Good rating + known OMDb absence | 7 days |
+| Good free rating + OMDb quota | 24 hours |
+| Good free rating + invalid/unactivated Key or permanent OMDb refusal | 1 hour |
+| Good rating with transient source failure | 5 minutes |
+| `no_rating` / `not_found` / `ambiguous` | 10 minutes |
+| `error` with transient search/rating failure | 30 seconds |
+| `error` with permanent/internal failure | 10 minutes |
 
 Tabs permission activeTab + storage + Netflix host. popup can chrome.tabs.query active currentWindow and sendMessage; handle missing/restricted/wrong tab with clear actionable message. `chrome.runtime.getManifest().version` displayed. Poll GET_PAGE every 1.5s while popup open (stop pagehide). UI defaults to browser language (English or Simplified Chinese), with a persistent manual override. Titles themselves are never translated by the UI. Native sliders, checkboxes accessible labels/tab navigation. Popup <=420px wide and <=600px scrollable Chrome popup, key details collapsed. Settings auto-save (debounced range), state/progress observable. No mock data/no optimistic health/no external assets. Clear attribution IMDb via Cinemeta mirror, TVmaze independent ratings CC BY-SA; OMDb for RT/MC optional, no guarantee every title.

@@ -17,7 +17,8 @@ const resolved = await resolveCandidate(chosen);
 // { id, title, year, type,
 //   ratings: { imdb?:   { value, scale: 10, provider: "Cinemeta", url: <imdb.com title page> },
 //              tvmaze?: { value, scale: 10, provider: "TVmaze",   url: <tvmaze.com show page> } },
-//   sources: [{ provider, url: <API URL requested>, status: "ok"|"no_rating"|"not_found"|"error", error? }] }
+//   sources: [{ provider, url: <API URL requested>, status: "ok"|"no_rating"|"not_found"|"error", error? }],
+//   diagnostics: [{provider, stage:"rating", kind:"timeout"|"network"|"http"|"parse", status?:<HTTP number>}] }
 ```
 
 Options for both: `fetchImpl` (default global `fetch`) and `timeoutMs`
@@ -99,6 +100,22 @@ normalized title on the caller side.
   safe for the global `fetch`; do not pass a method that relies on `this`.
 - TVmaze data is CC BY-SA: show attribution with a link to TVmaze wherever
   its rating is displayed (`ratings.tvmaze.url` is the show page).
+
+## Whole-title pipeline and OMDb outcomes
+
+Across titles, content has at most six in-flight LOOKUP messages per tab; the worker runs four complete lookups at once. Within one title, original search → optional Netflix English name → optional English search are dependent steps, not a bulk-ID API. Once a candidate IMDb ID is confirmed, Cinemeta, TVmaze (series) and optional OMDb rating requests start concurrently. OMDb does not wait for the free sources; its ratings still take precedence for the same source. Free mode or a missing Key makes no automatic OMDb request. Host caps above and the two-request Netflix cap are unchanged.
+
+OMDb has a ten-second request/body deadline and no immediate retry. Known absent-title responses are missing data, not a network error. Invalid Key and exhausted quota are configuration/availability warnings; they do not discard free ratings. Unknown `Response:False`, malformed data and a mismatched returned IMDb ID are protocol failures, not trustworthy absence. No OMDb URL or Key is included in cached source diagnostics.
+
+Rating reuse is determined by structured outcomes, not warning text:
+- Good ratings: seven days normally, including an absent OMDb title.
+- Good free rating plus an invalid/unactivated Key or another permanent OMDb refusal: one hour, not seven days. This allows external Key activation to recover without repeated five-minute lookups. Saving the same Key or rescanning reuses cache; existing explicit Clear cache recovers immediately, but also removes the local library cache. Changing the Key or provider mode also resets cache.
+- Good free rating plus OMDb daily quota exhaustion: at most 24 hours, so RT/MC can be refreshed after the next quota reset.
+- Good ratings with transient rating-source failure: five minutes. Optional Netflix title-stage failure does not shorten these windows.
+- Settled `no_rating`, `not_found`, `ambiguous`: ten minutes. A source's missing title alone never becomes a 30-second error loop.
+- Failed search/rating: 30 seconds for transient failures; ten minutes for permanent/internal failures. Content further backs off repeat failures (30s → 60s → 120s, up to 15 minutes), respects the worker's retry hint, and retries only near-viewport titles. Manual retry/online recovery resets page backoff.
+
+New results retain a bounded local-only diagnostic vocabulary: provider, stage, failure kind and optional numeric HTTP status. Content details, popup and library translate this without exposing URLs or raw exceptions. An absent-source diagnostic is informational. The HUD counts affected titles instead of suggesting that the whole extension is broken. Old cached records may lack these fields; they acquire diagnostics on their next due lookup. This is not server telemetry or a guarantee that every failed intermediate fallback is recorded.
 
 ## Coverage and known gaps
 

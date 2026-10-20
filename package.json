@@ -1,6 +1,6 @@
 {
   "name": "netflix-score-lens",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -9,7 +9,7 @@
   "engines": {"node": ">=22"},
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "test:browser": "node tests/e2e.mjs && node tests/background-e2e.mjs && node tests/matching-integration.mjs && node tests/content-edge.mjs && node tests/content-visibility.mjs && node tests/content-lifecycle.mjs && node tests/library-integration.mjs",
+    "test:browser": "node tests/e2e.mjs && node tests/background-e2e.mjs && node tests/network-reliability.mjs && node tests/matching-integration.mjs && node tests/content-edge.mjs && node tests/content-visibility.mjs && node tests/content-preview.mjs && node tests/content-retries.mjs && node tests/content-lifecycle.mjs && node tests/library-integration.mjs",
     "test:live": "node tests/popup-integration.mjs",
     "package": "python3 scripts/package.py",
     "store:assets": "node scripts/store-assets.mjs"

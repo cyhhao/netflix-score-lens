@@ -1,5 +1,5 @@
 import {t,setLanguage,getLanguage,localizeDOM,localizeMessage,formatDate} from './i18n.js';
-import './i18n-content.js'; // shared backend/cache message dictionary (matchReason, warnings, errors)
+import {diagnosticLines} from './i18n-content.js'; // shared backend/cache messages and safe diagnostics
 import './i18n-library.js';
 import {netflixTitleUrl} from './core.js';
 
@@ -154,6 +154,7 @@ function card(item) {
     }
     if(result.id) line(t('IMDb ID：{id}',{id:result.id}));
     if(result.matchReason) line(t('匹配依据：{reason}',{reason:localizeMessage(result.matchReason)}));
+    for(const text of diagnosticLines(result)) line(text);
     if(result.fetchedAt||item.at) line(t('查询时间：{date}',{date:formatDate(result.fetchedAt||item.at)}));
     if(item.current===false) line(t('历史配置下的结果：评分源设置现已改变。'));
     if(item.stale) line(t('缓存已过期；返回 Netflix 并再次遇到此作品时重新查询，本页仅浏览本机数据。'));

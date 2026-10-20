@@ -6,6 +6,9 @@ import { describe, it } from "node:test";
 import {
   ProviderError,
   SearchIncompleteError,
+  diagnostic,
+  diagnosticsFor,
+  isTransientDiagnostic,
   resolveCandidate,
   searchCandidates
 } from "../providers.js";
@@ -287,7 +290,8 @@ describe("resolveCandidate", () => {
       year: 2010,
       type: "movie",
       ratings: { imdb: { value: 8.8, scale: 10, provider: "Cinemeta", url: "https://www.imdb.com/title/tt1375666/" } },
-      sources: [{ provider: "Cinemeta", url: metaUrl("movie", "tt1375666"), status: "ok" }]
+      sources: [{ provider: "Cinemeta", url: metaUrl("movie", "tt1375666"), status: "ok" }],
+      diagnostics: []
     });
   });
 
@@ -314,6 +318,7 @@ describe("resolveCandidate", () => {
     assert.equal(result.ratings.tvmaze.provider, "TVmaze");
     assert.deepEqual(result.sources.map((s) => [s.provider, s.status]), [["Cinemeta", "error"], ["TVmaze", "ok"]]);
     assert.match(result.sources[0].error, /HTTP 504/);
+    assert.deepEqual(result.diagnostics, [{ provider: "Cinemeta", stage: "rating", kind: "http", status: 504 }]);
     assert.equal(result.title, "Dark", "falls back to TVmaze for title/year");
     assert.equal(result.year, 2017);
   });
@@ -353,6 +358,42 @@ describe("resolveCandidate", () => {
     await assert.rejects(resolveCandidate({ id: "12345", type: "movie" }), TypeError);
     await assert.rejects(resolveCandidate({ id: "tt1375666", type: "episode" }), TypeError);
     await assert.rejects(resolveCandidate(null), TypeError);
+  });
+});
+
+describe("diagnostics", () => {
+  it("keeps only the fixed vocabulary and an HTTP status number", () => {
+    assert.deepEqual(
+      diagnostic({ provider: "OMDb", stage: "rating", kind: "auth", status: 401, message: "apikey=secret", url: "https://www.omdbapi.com/?apikey=secret" }),
+      { provider: "OMDb", stage: "rating", kind: "auth", status: 401 }
+    );
+    assert.deepEqual(
+      diagnostic({ provider: "https://evil.example/", stage: "?", kind: "Invalid API key!", status: "401" }),
+      { provider: "Extension", stage: "extension", kind: "internal" }
+    );
+    assert.deepEqual(diagnostic({ provider: "IMDb", stage: "search", kind: "network", status: null }), { provider: "IMDb", stage: "search", kind: "network" });
+  });
+
+  it("preserves every failed search step without messages or URLs", async () => {
+    const { fetchImpl } = fakeFetch({
+      [cinemetaSearch("movie", "inception")]: () => text("error code: 503", 503),
+      [`${IMDB}/inception.json`]: () => { throw new TypeError("fetch failed for https://secret.example/?apikey=nope"); }
+    });
+    const error = await searchCandidates("inception", { type: "movie", fetchImpl }).catch((e) => e);
+    const diagnostics = diagnosticsFor(error, "search");
+    assert.deepEqual(diagnostics, [
+      { provider: "Cinemeta", stage: "search", kind: "http", status: 503 },
+      { provider: "IMDb", stage: "search", kind: "network" }
+    ]);
+    assert.doesNotMatch(JSON.stringify(diagnostics), /https?:|apikey|inception|fetch failed/);
+    assert.deepEqual(diagnosticsFor(new TypeError("boom https://x"), "rating"), [{ provider: "Extension", stage: "rating", kind: "internal" }]);
+  });
+
+  it("separates transient failures from permanent or configuration states", () => {
+    for (const d of [{ kind: "timeout" }, { kind: "network" }, { kind: "parse" }, { kind: "http" }, { kind: "http", status: 429 }, { kind: "http", status: 503 }])
+      assert.equal(isTransientDiagnostic(d), true, JSON.stringify(d));
+    for (const d of [{ kind: "http", status: 400 }, { kind: "http", status: 403 }, { kind: "auth", status: 401 }, { kind: "quota" }, { kind: "not_found" }, { kind: "internal" }])
+      assert.equal(isTransientDiagnostic(d), false, JSON.stringify(d));
   });
 });
 

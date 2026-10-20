@@ -1,4 +1,16 @@
-import {registerMessages} from "./i18n.js";
+import {registerMessages,t} from "./i18n.js";
+
+// Only render allowlisted diagnostic fields; never interpolate request URLs or
+// exception text (a provider URL can contain a credential).
+export function diagnosticLines(result) {
+  const stages={search:'标题检索',rating:'评分获取',title:'英文标题补充',extension:'扩展通信'};
+  const reasons={timeout:'请求超时',network:'评分服务暂时不可达',parse:'评分服务返回了无法解析的数据',auth:'Key 无效或未激活',quota:'额度已用完',not_found:'此来源暂无作品数据',internal:'查询暂未完成'};
+  const providers=new Set(['Cinemeta','IMDb','TVmaze','OMDb','Netflix','Extension','Search']);
+  return [...new Set((Array.isArray(result?.diagnostics)?result.diagnostics:[]).slice(0,12).filter(d=>d&&stages[d.stage]).map(d=>{
+    const reason=d.kind==='http'&&Number.isInteger(d.status)&&d.status>=100&&d.status<=599?t('服务返回 HTTP {status}',{status:d.status}):t(reasons[d.kind]||'查询暂未完成');
+    return t('{provider} · {stage}：{reason}',{provider:providers.has(d.provider)?d.provider:t('评分服务'),stage:t(stages[d.stage]),reason});
+  }))];
+}
 
 registerMessages({
   "烂番茄": "Rotten Tomatoes",
@@ -26,6 +38,19 @@ registerMessages({
   "{matched} 已匹配": "{matched} matched",
   " · {ambiguous} 待确认": " · {ambiguous} needs review",
   " · 请求失败": " · request failed",
+  " · {errors} 部暂未取到评分": " · {errors} titles could not be checked",
+  "部分作品暂未取到评分，不影响其他评分。进入视口后会逐步延长间隔重试，也可打开详情手动重试。": "Some titles could not be checked; other ratings are unaffected. Visible titles retry with increasing delays, or open details to retry manually.",
+  "评分查询暂未完成，将自动重试": "The rating lookup did not complete; it will retry automatically",
+  "{provider} · {stage}：{reason}": "{provider} · {stage}: {reason}",
+  "标题检索": "Title search",
+  "评分获取": "Rating lookup",
+  "英文标题补充": "English title lookup",
+  "扩展通信": "Extension messaging",
+  "Key 无效或未激活": "Key invalid or not activated",
+  "额度已用完": "Quota exhausted",
+  "此来源暂无作品数据": "No title data at this source",
+  "查询暂未完成": "Lookup did not complete",
+  "评分服务": "Rating service",
   "仅查询视口附近作品，滚动页面自动继续。点击卡片评分可看来源。": "Only titles near the viewport are checked; scrolling continues automatically. Click a rating badge to view its sources.",
   "打开工具栏「Netflix Score Lens」可调阈值、检查评分源、手动修正匹配。": "Open the “Netflix Score Lens” toolbar popup to adjust thresholds, check sources, or correct a match.",
   "未识别到卡片：请进入已登录的 Netflix 首页、电影、节目或搜索页。": "No cards detected. Open a signed-in Netflix home, movie, show, or search page.",

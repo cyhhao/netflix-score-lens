@@ -62,6 +62,34 @@ export class SearchIncompleteError extends Error {
   }
 }
 
+const DIAGNOSTIC_PROVIDERS = new Set(["Cinemeta", "IMDb", "TVmaze", "OMDb", "Netflix", "Extension"]);
+const DIAGNOSTIC_STAGES = new Set(["search", "rating", "title", "extension"]);
+const DIAGNOSTIC_KINDS = new Set(["timeout", "network", "http", "parse", "auth", "quota", "not_found", "internal"]);
+
+// Display-safe failure provenance: fixed vocabulary plus an HTTP status
+// number. Never a message, URL, query or credential.
+export function diagnostic({ provider, stage, kind, status } = {}) {
+  const entry = {
+    provider: DIAGNOSTIC_PROVIDERS.has(provider) ? provider : "Extension",
+    stage: DIAGNOSTIC_STAGES.has(stage) ? stage : "extension",
+    kind: DIAGNOSTIC_KINDS.has(kind) ? kind : "internal"
+  };
+  if (Number.isInteger(status) && status >= 100 && status <= 599) entry.status = status;
+  return entry;
+}
+
+// Failures a later automatic attempt may resolve without user action.
+export function isTransientDiagnostic({ kind, status }) {
+  return ["timeout", "network", "parse"].includes(kind) ||
+    (kind === "http" && (status === undefined || status === 429 || status >= 500));
+}
+
+export function diagnosticsFor(error, stage) {
+  if (error instanceof SearchIncompleteError) return error.failures.flatMap((failure) => diagnosticsFor(failure, stage));
+  if (error instanceof ProviderError) return [diagnostic({ provider: error.provider, stage, kind: error.kind, status: error.status })];
+  return [diagnostic({ provider: "Extension", stage, kind: "internal" })];
+}
+
 function createLimiter({ concurrency, minIntervalMs }) {
   const queue = [];
   let active = 0;
@@ -281,9 +309,9 @@ function validateCandidate(candidate) {
   return candidate;
 }
 
-function failedSource(provider, url, error) {
+function failed(provider, url, error) {
   if (!(error instanceof ProviderError)) throw error;
-  return { provider, url, status: "error", error: error.message };
+  return { source: { provider, url, status: "error", error: error.message }, diagnostics: diagnosticsFor(error, "rating") };
 }
 
 async function lookupCinemeta(id, type, options) {
@@ -302,7 +330,7 @@ async function lookupCinemeta(id, type, options) {
       source: { provider: "Cinemeta", url, status: "ok" }
     };
   } catch (error) {
-    return { source: failedSource("Cinemeta", url, error) };
+    return failed("Cinemeta", url, error);
   }
 }
 
@@ -323,7 +351,7 @@ async function lookupTvmaze(id, options) {
       source: { provider: "TVmaze", url, status: "ok" }
     };
   } catch (error) {
-    return { source: failedSource("TVmaze", url, error) };
+    return failed("TVmaze", url, error);
   }
 }
 
@@ -337,6 +365,7 @@ async function lookupTvmaze(id, options) {
  * Never throws for provider failures: each request is reported in `sources`
  * with status "ok" | "no_rating" | "not_found" | "error". Treat a result
  * containing an "error" source as retryable rather than as "no rating".
+ * `diagnostics` lists each failed request as a sanitized `diagnostic()`.
  */
 export async function resolveCandidate(candidate, { fetchImpl = fetch, timeoutMs } = {}) {
   const { id, type } = validateCandidate(candidate);
@@ -358,6 +387,7 @@ export async function resolveCandidate(candidate, { fetchImpl = fetch, timeoutMs
     year: info.year ?? candidate.year ?? null,
     type,
     ratings,
-    sources: lookups.map((lookup) => lookup.source)
+    sources: lookups.map((lookup) => lookup.source),
+    diagnostics: lookups.flatMap((lookup) => lookup.diagnostics ?? [])
   };
 }
