@@ -130,6 +130,14 @@ New results retain a bounded local-only diagnostic vocabulary: provider, stage, 
 - Rate limits are not shared across browser profiles or devices behind the
   same IP.
 
+## Episode cards and parent-show metadata (`bridge.js`, `content.js`)
+
+Netflix `episodic-card` labels name a single episode (for example “Pilot”), not the series. They are never sent directly to a rating search. The bridge reads the requested `Episode:{"videoId":ID}` from live Apollo/initial GraphQL data and follows only `parentShow.__ref` to a Show, or `parentSeason.__ref` to a Season and its `parentShow.__ref`. These field names and plain `title` are present in Netflix's public anonymous web-client GraphQL fragments; the normalized Episode/Season key layout and whether a logged-in row hydrates those fields still require live-page acceptance.
+
+Only the parent's public ID, bounded title, `releaseYear` and `series` type are returned. At most one Season and one Show are followed; caches are not enumerated and no new network requests or host permissions are added. The episode title/year and Show `latestYear` are not substitutes. Partial live data falls back per absent field to initial data, but an explicit live null does not restore that field's older value. Conflicting direct/season parents remain unresolved. Legacy Falcor episode records have no verified parent relationship here and fail closed.
+
+Resolved cards use `nf:<showId>` and the show's query fields, so multiple episodes and a regular card share a lookup, rating and show-level manual binding. Old episode-title cache entries cannot satisfy the corrected request. The fix does not clear unrelated cache, credentials or overrides. Missing parents remain undimmed and explicitly identified as awaiting show metadata, without sending bogus episode-name searches; near-viewport scans retry when metadata hydrates. Ordinary/legacy cards explicitly identified as episodes follow the same conservative rule, even if their label looks like a show name; normal Show/Movie cards retain their visible query titles. Unresolved identities are excluded from popup correction/progress and counted separately, and cannot supply a hover preview's query title or revive an older cached preview. This safety behavior is not a promise of full catalog coverage.
+
 ## Optional Netflix English display-title enrichment (`netflix-titles.js`, `matching.js`)
 
 This is not a Netflix-to-IMDb mapping API or a bulk catalog crawler. Only an

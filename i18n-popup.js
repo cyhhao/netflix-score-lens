@@ -38,6 +38,7 @@ export const POPUP_MESSAGES = Object.freeze({
   "已暂停": "Paused",
   "页面上的评分和遮罩已隐藏，打开右上角开关即可恢复。": "Ratings and overlays are hidden on the page. Turn on the switch at the top right to resume.",
   "还没识别到作品卡片": "No title cards detected yet",
+  "正在识别所属剧集": "Identifying parent shows",
   "在 Netflix 首页、浏览或搜索页会自动识别；播放页没有卡片。": "Cards are detected automatically on Netflix home, browse and search pages; the player has none.",
   "正在获取评分 · {done}/{total}": "Fetching ratings · {done}/{total}",
   "已查询 {done}/{total} 部 · {matched} 部已匹配": "Checked {done}/{total} · {matched} matched",

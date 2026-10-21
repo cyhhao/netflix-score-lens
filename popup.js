@@ -766,7 +766,10 @@ function pageView() {
   const manifestVersion = chrome.runtime.getManifest().version;
   const stale = version && version !== manifestVersion ? t("页面脚本为 v{page}，刷新页面以使用 v{current}。", { page: version, current: manifestVersion }) : "";
   const where = page.netflix ? "" : t("测试页面") + " · ";
+  const unresolved = Math.max(0, Number(summary.unresolved) || 0);
+  const unresolvedHint = unresolved ? t("{count} 张卡片尚未取得所属剧集信息，暂不纳入作品查询或纠错。", { count: unresolved }) : "";
   if (!enabled) return { kind: "paused", title: t("已暂停"), hint: stale || t("页面上的评分和遮罩已隐藏，打开右上角开关即可恢复。"), action: stale ? "reload" : "" };
+  if (!progress.total && unresolved) return { kind: "idle", title: t("正在识别所属剧集"), hint: stale || unresolvedHint, rescan: true, action: stale ? "reload" : "" };
   if (!progress.total) return { kind: "idle", title: t("还没识别到作品卡片"), hint: stale || where + t("在 Netflix 首页、浏览或搜索页会自动识别；播放页没有卡片。"), rescan: true, action: stale ? "reload" : "" };
   const matched = Number(summary.matched) || 0;
   const counts = { done: progress.done, total: progress.total, matched };
@@ -775,7 +778,7 @@ function pageView() {
     : progress.waiting ? t("已查询 {done}/{total} 部 · {matched} 部已匹配", counts)
       : t("已完成 · {matched}/{total} 部已匹配", counts);
   const waitingHint = progress.waiting ? t("其余 {count} 部滚动到附近时自动查询。", { count: progress.waiting }) : "";
-  return { kind: progress.pending ? "working" : "done", title, hint: stale || waitingHint || (where ? t("测试页面") : ""), rescan: true, progress, summary, action: stale ? "reload" : "" };
+  return { kind: progress.pending ? "working" : "done", title, hint: stale || [waitingHint, unresolvedHint, where ? t("测试页面") : ""].filter(Boolean).join(" "), rescan: true, progress, summary, action: stale ? "reload" : "" };
 }
 
 function renderPage() {
@@ -802,7 +805,8 @@ function renderStats(summary) {
     ["待确认", n("ambiguous"), n("ambiguous") ? "is-warn" : ""],
     ["未找到", n("unmatched"), ""],
     ["失败", n("errors"), n("errors") ? "is-error" : ""],
-    ["可见", n("visible"), ""]
+    ["可见", n("visible"), ""],
+    ["待识别剧集", n("unresolved"), n("unresolved") ? "is-warn" : ""]
   ];
   const signature = `${getLocale()}|${stats.map((s) => s[1]).join(",")}`;
   if (ui.stats.dataset.sig === signature) return;

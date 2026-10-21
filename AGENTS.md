@@ -7,8 +7,8 @@ Chrome MV3 extension. Source: `https://github.com/cyhhao/netflix-score-lens`. Ru
 - `matching.js` / `netflix-titles.js`: optional same-ID public English-title enrichment; boundaries and retention in `docs/providers.md`.
 - `providers.js`: no-Key candidates and ratings; `docs/providers.md` explains adapters.
 - `background.js`: queue/cache, credentials, trusted-page messaging, explicit manual bindings and source health.
-- `bridge.js`: requested Netflix ID → public year/type only, never account state.
-- `content.*`: current/legacy cards and expanded mini-modal previews, viewport work, overlays and HUD. Preview identity comes from its title link, never the trailer/episode video ID; reuse the same per-title result.
+- `bridge.js`: requested Netflix ID → allowlisted public title/identity/year/type only, never account state. Episode parents follow `parentShow` or `parentSeason` → `parentShow`; unknown relationships fail closed. Contract and limits: `docs/providers.md`.
+- `content.*`: current/legacy cards, episodic cards and expanded mini-modal previews, viewport work, overlays and HUD. Episode card labels are not series titles: resolve their parent show before lookup and use its cache/binding identity. Preview identity comes from its title link, never the trailer video ID; reuse the same per-title result.
 - `popup.*`: settings, correction and source diagnosis.
 - `library.*`: read-only independent local cache browser; not a durable watchlist.
 
