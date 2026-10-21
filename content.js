@@ -3,7 +3,7 @@
   const SELECTOR='a[data-uia="standard-card"],a[href*="?jbv="],a[href*="&jbv="],a[href*="/title/"],.title-card a[href*="/watch/"]';
   const PREVIEW='[data-uia="modal-motion-container-MINI_MODAL"],.previewModal--container.mini-modal';
   const MEDIA='[data-uia="previewModal--player_container"],.previewModal--player_container';
-  const state={settings:null,records:new Map(),results:new Map(),pending:new Set(),failAt:new Map(),failures:new Map(),metadata:{},revisions:new Map(),epoch:0,url:location.href,ready:false};
+  const state={settings:null,records:new Map(),results:new Map(),pending:new Set(),failAt:new Map(),failures:new Map(),metadata:{},episodeIds:new Set(),revisions:new Map(),epoch:0,url:location.href,ready:false};
   let core,i18n,diagnosticLines=()=>[],scanTimer,activeLookups=0,host,panel,stats,btn,observer,intersection,heartbeat,version='',stopped=false;
   const instance={scan};
   const invalidated=error=>/Extension context invalidated/i.test(error?.message||'');
@@ -26,7 +26,7 @@
     window.removeEventListener('online',online);window.removeEventListener('nsl:metadata-response',metadataResponse);
     try{chrome.runtime.onMessage.removeListener(onMessage);}catch(error){if(!invalidated(error))console.warn('Score Lens:',error);}
     for(const [a]of state.records)removeDecoration(a);
-    state.records.clear();state.pending.clear();state.results.clear();state.failAt.clear();state.failures.clear();state.revisions.clear();state.metadata={};
+    state.records.clear();state.pending.clear();state.results.clear();state.failAt.clear();state.failures.clear();state.revisions.clear();state.metadata={};state.episodeIds.clear();
     host?.remove();
     if(window.__scoreLensInstance===instance)delete window.__scoreLensInstance;
     if(notify)showReloadNotice();
@@ -66,12 +66,20 @@
   const statusLabels={pending:'查询中',ambiguous:'待确认',not_found:'未找到',error:'重试',no_rating:'暂无评分'};
   function itemFor(a){
     if(nonCard(a)||hidden(a))return null;
-    const root=previewRoot(a),id=nfId(a);let title;
+    const root=previewRoot(a),rawId=nfId(a),m=state.metadata[rawId]||{},id=m.netflixId||rawId;let title;
+    if(!root&&(a.matches('[data-uia="episodic-card"]')||m.type==='episode'||id!==rawId)){
+      // Episodic labels, or an ID known to identify an episode, cannot establish
+      // the show's identity. Remember it even after the original is virtualized away.
+      state.episodeIds.add(rawId);
+      if(m.type==='series'&&m.title)return core.validItem({title:m.title,netflixId:id,year:m.year,type:'series'});
+      title=(a.getAttribute('aria-label')||a.querySelector('h3')?.textContent||'').trim();
+      try{return {...core.validItem({title,netflixId:rawId}),awaitingSeries:true};}catch{return null;}
+    }
     if(root){
-      if(!id)return null;
+      if(!id||m.type==='episode'||(state.episodeIds.has(rawId)&&!(m.type==='series'&&m.title)))return null;
       const names=[...new Set([...root.querySelectorAll('img.previewModal--boxart[alt]')].map(img=>img.alt.trim()).filter(Boolean))];
       if(names.length!==1)return null;
-      const source=[...state.records].find(([el,r])=>!previewRoot(el)&&el.isConnected&&r.item.netflixId===id)?.[1]?.item;
+      const source=[...state.records].find(([el,r])=>!previewRoot(el)&&el.isConnected&&!r.item.awaitingSeries&&r.item.netflixId===id)?.[1]?.item;
       const previous=state.records.get(a)?.item;
       // Bind a preview to an already encountered title, even when the original
       // card is virtualized away. Never query a new ID with a stale poster name.
@@ -79,8 +87,7 @@
       if(!title||core.normalize(title)!==core.normalize(names[0]))return null;
     }else title=(a.getAttribute('aria-label')||a.getAttribute('title')||a.querySelector('img')?.alt||a.querySelector('.fallback-text')?.textContent||'').trim();
     if(!title)return null;
-    const m=state.metadata[id]||{};
-    try{return core.validItem({title,netflixId:id,...m});}catch{return null;}
+    try{return core.validItem({title,netflixId:id,year:m.year,type:m.type});}catch{return null;}
   }
   function removeDecoration(a){
     a.classList.remove('nsl-card','nsl-low','nsl-hover-reveal','nsl-preview');
@@ -104,8 +111,8 @@
     if(stopped||!a.isConnected)return;
     if(!state.settings?.enabled||hidden(a)){removeDecoration(a);return;}
     if(JSON.stringify(itemFor(a))!==JSON.stringify(record.item)){removeDecoration(a);schedule();return;}
-    const r=state.results.get(record.item.key),pending=state.pending.has(record.item.key);
-    const signature=JSON.stringify([record.item.key,r,state.settings,pending]);
+    const waiting=record.item.awaitingSeries,r=waiting?null:state.results.get(record.item.key),pending=!waiting&&state.pending.has(record.item.key);
+    const signature=JSON.stringify([record.item,r,state.settings,pending]);
     if(a.dataset.nslRender===signature)return;
     a.dataset.nslRender=signature;
     const layer=createLayer(a),badge=layer.querySelector('.nsl-badges');layer.lang=i18n.getLocale();badge.replaceChildren();
@@ -117,22 +124,22 @@
         badge.append(chip);
       }
     }else{
-      const chip=document.createElement('span');chip.className='nsl-chip nsl-muted';chip.textContent=t(statusLabels[pending?'pending':r?.status]||'等候查询');badge.append(chip);
+      const chip=document.createElement('span');chip.className='nsl-chip nsl-muted';chip.textContent=t(waiting?'待识别剧集':statusLabels[pending?'pending':r?.status]||'等候查询');badge.append(chip);
     }
     const score=core.ratingChoice(r,state.settings),low=core.isLow(r,state.settings);
     a.classList.toggle('nsl-low',low);a.classList.toggle('nsl-hover-reveal',state.settings.revealOnHover);
     a.style.setProperty('--nsl-dim',String(state.settings.dimOpacity));
-    badge.setAttribute('aria-label',t('{title}：{badge}。点击查看匹配、来源及纠错方式',{title:record.item.title,badge:badge.textContent}));
-    badge.title=[record.item.title,r?.netflixTitle?.title&&t('Netflix 英文展示名：{title}',{title:r.netflixTitle.title}),r?.title&&`${r.title} (${r.year||t('未知年份')})`,r?.matchReason&&localizeMessage(r.matchReason),low?t('低于 {score}{reveal}',{score:state.settings.minScore,reveal:state.settings.revealOnHover?t('，悬停可恢复亮度'):''}):!score&&r?.status==='ok'?t('所选评分源暂无数据，不会变暗'):t('点击评分查看来源；插件弹窗可纠错')].filter(Boolean).join('\n');
+    badge.setAttribute('aria-label',t(waiting?'{title}：{badge}。点击查看说明':'{title}：{badge}。点击查看匹配、来源及纠错方式',{title:record.item.title,badge:badge.textContent}));
+    badge.title=waiting?t('此卡片链接到单集，尚未取得所属剧集信息；不会用单集名称搜索评分。'):[record.item.title,r?.netflixTitle?.title&&t('Netflix 英文展示名：{title}',{title:r.netflixTitle.title}),r?.title&&`${r.title} (${r.year||t('未知年份')})`,r?.matchReason&&localizeMessage(r.matchReason),low?t('低于 {score}{reveal}',{score:state.settings.minScore,reveal:state.settings.revealOnHover?t('，悬停可恢复亮度'):''}):!score&&r?.status==='ok'?t('所选评分源暂无数据，不会变暗'):t('点击评分查看来源；插件弹窗可纠错')].filter(Boolean).join('\n');
   }
   function summary(){
-    const items=new Map();let visible=0;
-    for(const [a,r] of state.records){if(!a.isConnected)continue;items.set(r.item.key,r.item);if(near(a))visible++;}
-    const s={discovered:items.size,visible,matched:0,pending:0,ambiguous:0,unmatched:0,errors:0};
+    const items=new Map(),unresolved=new Set();let visible=0;
+    for(const [a,r] of state.records){if(!a.isConnected)continue;if(r.item.awaitingSeries){unresolved.add(r.item.key);continue;}items.set(r.item.key,r.item);if(near(a))visible++;}
+    const s={discovered:items.size,visible,unresolved:unresolved.size,matched:0,pending:0,ambiguous:0,unmatched:0,errors:0};
     for(const [key]of items){const r=state.results.get(key);if(state.pending.has(key))s.pending++;else if(r?.status==='ok')s.matched++;else if(r?.status==='ambiguous')s.ambiguous++;else if(r?.status==='error')s.errors++;else if(r)s.unmatched++;}
     return {summary:s,items:[...items.values()].map(item=>({item,result:state.results.get(item.key)||{status:state.pending.has(item.key)?'pending':'waiting',ratings:{}}})),url:location.href,version};
   }
-  function updateStats(){if(stopped||!stats)return;const s=summary().summary;stats.textContent=!state.settings?.enabled?t('已暂停'):s.pending?t('{matched} 已匹配 · {pending} 查询中',{matched:s.matched,pending:s.pending}):`${t('{matched} 已匹配',{matched:s.matched})}${s.ambiguous?t(' · {ambiguous} 待确认',{ambiguous:s.ambiguous}):''}${s.errors?t(' · {errors} 部暂未取到评分',{errors:s.errors}):''}`;}
+  function updateStats(){if(stopped||!stats)return;const s=summary().summary;stats.textContent=!state.settings?.enabled?t('已暂停'):s.pending?t('{matched} 已匹配 · {pending} 查询中',{matched:s.matched,pending:s.pending}):`${t('{matched} 已匹配',{matched:s.matched})}${s.ambiguous?t(' · {ambiguous} 待确认',{ambiguous:s.ambiguous}):''}${s.errors?t(' · {errors} 部暂未取到评分',{errors:s.errors}):''}${s.unresolved?t(' · {count} 张卡片待识别剧集',{count:s.unresolved}):''}`;}
   function localizeHud(){
     if(!host)return;
     host.lang=i18n.getLocale();panel.setAttribute('aria-label',t('评分详情'));
@@ -151,11 +158,12 @@
   }
   function basePanel(title){panel.replaceChildren();panel.hidden=false;const close=document.createElement('button');close.id='close';close.textContent='×';close.setAttribute('aria-label',t('关闭详情'));close.onclick=()=>{panel.hidden=true;btn.focus();};const h=document.createElement('h3');h.textContent=title;panel.append(close,h);}
   function p(text){const e=document.createElement('p');e.textContent=text;panel.append(e);}
-  function showStatus(){if(!live())return;panel.dataset.view='status';delete panel.dataset.itemKey;const s=summary().summary;basePanel(t('评分镜片'));p(t('识别 {discovered} 部 · 匹配 {matched} 部 · 待确认 {ambiguous} 部',{discovered:s.discovered,matched:s.matched,ambiguous:s.ambiguous}));p(t('仅查询视口附近作品，滚动页面自动继续。点击卡片评分可看来源。'));if(s.errors)p(t('部分作品暂未取到评分，不影响其他评分。进入视口后会逐步延长间隔重试，也可打开详情手动重试。'));p(t('打开工具栏「Netflix Score Lens」可调阈值、检查评分源、手动修正匹配。'));if(!s.discovered)p(t('未识别到卡片：请进入已登录的 Netflix 首页、电影、节目或搜索页。'));}
+  function showStatus(){if(!live())return;panel.dataset.view='status';delete panel.dataset.itemKey;const s=summary().summary;basePanel(t('评分镜片'));p(t('识别 {discovered} 部 · 匹配 {matched} 部 · 待确认 {ambiguous} 部',{discovered:s.discovered,matched:s.matched,ambiguous:s.ambiguous}));p(t('仅查询视口附近作品，滚动页面自动继续。点击卡片评分可看来源。'));if(s.errors)p(t('部分作品暂未取到评分，不影响其他评分。进入视口后会逐步延长间隔重试，也可打开详情手动重试。'));p(t('打开工具栏「Netflix Score Lens」可调阈值、检查评分源、手动修正匹配。'));if(s.unresolved)p(t('{count} 张卡片尚未取得所属剧集信息，暂不纳入作品查询或纠错。',{count:s.unresolved}));if(!s.discovered&&!s.unresolved)p(t('未识别到卡片：请进入已登录的 Netflix 首页、电影、节目或搜索页。'));}
   function showDetail(item){
     if(!live())return;
     panel.dataset.view='detail';panel.dataset.itemKey=item.key;
     const r=state.results.get(item.key);basePanel(item.title);
+    if(item.awaitingSeries){p(t('此卡片链接到单集，尚未取得所属剧集信息；不会用单集名称搜索评分。'));return;}
     if(r?.netflixTitle?.title) {
       p(t('Netflix 英文展示名：{title}',{title:r.netflixTitle.title}));
       const url=core.netflixTitleUrl(r.netflixTitle,item.netflixId);
@@ -180,7 +188,7 @@
     if(location.pathname.startsWith('/watch/')){for(const [a]of state.records)removeDecoration(a);host.hidden=true;return;}host.hidden=false;
     const links=[...document.querySelectorAll(SELECTOR)].filter(a=>!nonCard(a)&&(a.querySelector('img')||a.matches('[data-uia=standard-card]')));
     for(const root of document.querySelectorAll(PREVIEW)){const media=root.querySelector(MEDIA);if(media&&!links.includes(media))links.push(media);}
-    const metadataIds=[...new Set(links.filter(near).map(nfId).filter(id=>id&&!state.metadata[id]?.year))];
+    const metadataIds=[...new Set(links.filter(near).filter(a=>{const m=state.metadata[nfId(a)];return !m?.year||(a.matches('[data-uia="episodic-card"]')&&!m?.title);}).map(nfId).filter(Boolean))];
     for(let i=0;i<metadataIds.length;i+=200)window.dispatchEvent(new CustomEvent('nsl:metadata-request',{detail:JSON.stringify(metadataIds.slice(i,i+200))}));
     for(const a of links){
       const item=itemFor(a);if(!item)continue;
@@ -211,7 +219,7 @@
   }
   function drain(){
     if(!live()||!state.settings?.enabled||location.pathname.startsWith('/watch/'))return;
-    const wanted=new Map();for(const[a,r]of state.records)if(missingResult(r.item.key)&&near(a))wanted.set(r.item.key,r.item);
+    const wanted=new Map();for(const[a,r]of state.records)if(!r.item.awaitingSeries&&missingResult(r.item.key)&&near(a))wanted.set(r.item.key,r.item);
     for(const item of [...wanted.values()].slice(0,Math.max(0,6-activeLookups))){
       activeLookups++;
       const epoch=state.epoch,revision=state.revisions.get(item.key)||0;
@@ -253,7 +261,21 @@
     return false;
   }
   function online(){if(!live())return;for(const[key,r]of state.results)if(r.status==='error'){state.failAt.delete(key);state.failures.delete(key);}schedule();}
-  function metadataResponse(e){if(!live())return;try{const data=JSON.parse(e.detail);let changed=false;for(const[id,v]of Object.entries(data))if(/^\d{4,12}$/.test(id)&&v&&['movie','series'].includes(v.type)){const next={year:Number.isInteger(v.year)&&v.year>=1880&&v.year<=2100?v.year:null,type:v.type};if(JSON.stringify(state.metadata[id])!==JSON.stringify(next)){state.metadata[id]=next;changed=true;}}if(changed)schedule();}catch{}}
+  function metadataResponse(e){
+    if(!live())return;
+    try{
+      const data=JSON.parse(e.detail);let changed=false;
+      for(const[id,v]of Object.entries(data).slice(0,200)){
+        if(!/^\d{4,12}$/.test(id)||!v||!['movie','series','episode'].includes(v.type))continue;
+        if(v.netflixId!==undefined&&(!/^\d{4,12}$/.test(v.netflixId)||v.type!=='series'))continue;
+        const next={year:Number.isInteger(v.year)&&v.year>=1880&&v.year<=2100?v.year:null,type:v.type};
+        if(typeof v.title==='string'&&v.title.trim()&&v.title.trim().length<=200&&!/[\x00-\x1f]/.test(v.title))next.title=v.title.trim();
+        if(v.netflixId!==undefined)next.netflixId=String(v.netflixId);
+        if(JSON.stringify(state.metadata[id])!==JSON.stringify(next)){state.metadata[id]=next;changed=true;}
+      }
+      if(changed)schedule();
+    }catch{}
+  }
   (async()=>{
     if(!live())return;
     const base=chrome.runtime.getURL('');version=chrome.runtime.getManifest().version;
@@ -265,7 +287,7 @@
     chrome.runtime.onMessage.addListener(onMessage);window.addEventListener('nsl:metadata-response',metadataResponse);
     createHud();intersection=new IntersectionObserver(schedule,{rootMargin:'220px 0px'});
     observer=new MutationObserver(records=>{if(records.some(r=>{const e=r.target.nodeType===1?r.target:r.target.parentElement;return !e?.closest('.nsl-layer,#nsl-root') && !(r.type==='childList'&&[...r.addedNodes,...r.removedNodes].every(n=>n.nodeType===1&&n.matches?.('.nsl-layer,#nsl-root')));} ))schedule();});
-    observer.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['href','aria-label','title','alt','src','hidden']});
+    observer.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['href','aria-label','title','alt','src','hidden','data-uia']});
     window.addEventListener('scroll',schedule,{passive:true});window.addEventListener('resize',schedule,{passive:true});window.addEventListener('online',online);heartbeat=setInterval(schedule,3000);
     state.ready=true;window.__scoreLensInstance=instance;scan();
   })().catch(unexpected);

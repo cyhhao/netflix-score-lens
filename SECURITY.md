@@ -8,7 +8,7 @@ Use GitHub's private security advisory reporting for this repository. Do not inc
 
 - MV3 service worker performs provider requests over HTTPS, with `credentials: 'omit'`.
 - Settings mutation, credential storage and cached-library enumeration are restricted to trusted extension contexts. The Netflix content script receives only public settings/results.
-- The MAIN-world bridge reads requested title IDs' public year/type, not entire Netflix account state.
+- The MAIN-world bridge reads only requested title IDs' public title/year/type. For episodes it may follow a typed `parentShow` reference, or one `parentSeason` → `parentShow` hop, to return the show's public identity. It never enumerates the cache or exports account state; unresolved episodes cannot initiate rating lookups.
 - No remotely downloaded code, `eval`-based response execution, analytics SDK, server-side account or project-owned collection endpoint is used.
 - The optional OMDb API key and title cache are currently stored in Chrome local extension storage **without application-level encryption at rest**. TRUSTED_CONTEXTS is an access restriction, not encryption. This is not a credential vault and does not protect against access to the local browser profile, a compromised extension runtime or a compromised operating system.
 - Rating requests and optional anonymous Netflix English-title requests can reveal title interests/IDs and the requesting IP to recipients. Public title parsing is bounded and non-executing; no HTML is retained. The privacy policy describes this transmission; do not advertise this as “no data leaves the device.”

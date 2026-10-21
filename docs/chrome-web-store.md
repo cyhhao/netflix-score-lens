@@ -72,7 +72,7 @@ Netflix 主页面功能需要登录。若审核方要求测试凭据，需由发
 
 **activeTab** — On the user's explicit popup action, identify the current tab to explain whether Netflix is available, another site is active, or the page is browser-restricted. No global browsing-history permission is requested. Re-evaluate whether this can be removed while preserving diagnostics before store submission.
 
-**www.netflix.com** — Read displayed title names/IDs and requested public year/type metadata; optionally request a same-ID public English title page with omitted credentials for weak matches; place rating badges and reversible dimming only on Netflix cards.
+**www.netflix.com** — Read displayed title names/IDs and requested public title/year/type metadata; for episode cards, follow only the explicit parent-show relationship and read that show's public identity, without enumerating application caches; optionally request a same-ID public English title page with omitted credentials for weak matches; place rating badges and reversible dimming only on Netflix cards.
 
 **v3-cinemeta.strem.io / cinemeta-live.strem.io** — Search metadata and resolve mirrored IMDb scores, including the service's documented-in-code redirect target.
 
