@@ -1,0 +1,10 @@
+{
+  "extensionName": {
+    "message": "Netflix Score Lens",
+    "description": "Independent extension name; not affiliated with Netflix."
+  },
+  "extensionDescription": {
+    "message": "Ratings on Netflix cards and hover previews, adjustable dimming, and a local score library. Optional OMDb support.",
+    "description": "Chrome Web Store summary, at most 132 characters."
+  }
+}

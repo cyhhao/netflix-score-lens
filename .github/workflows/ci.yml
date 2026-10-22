@@ -22,6 +22,7 @@ jobs:
       - run: npm run test:browser
       - run: npm run package
       - run: node tests/package-smoke.mjs
+      - run: npm run store:kit
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: extension-packages

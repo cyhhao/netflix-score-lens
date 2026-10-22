@@ -1,0 +1,10 @@
+{
+  "extensionName": {
+    "message": "Netflix Score Lens",
+    "description": "独立插件名称，不代表 Netflix 官方产品。"
+  },
+  "extensionDescription": {
+    "message": "Netflix 卡片与放大预览评分角标、可调低分遮罩和本机评分库。支持免费评分来源及可选 OMDb，匹配结果可手动纠错。",
+    "description": "Chrome 商店简短描述，不超过 132 个字符。"
+  }
+}

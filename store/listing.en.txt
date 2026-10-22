@@ -1,0 +1,25 @@
+See ratings on Netflix title cards and expanded hover previews. Dim lower-rated titles using the rating source and threshold you choose.
+
+DATA FLOW: To match scores, the extension sends encountered titles or IMDb IDs directly to Cinemeta, IMDb and TVmaze. It may request the same ID's public Netflix title page anonymously for English-name evidence; an optional key goes only to OMDb. Encountered cards can include personalized rows such as Continue Watching or My List. Related titles and query timestamps are cached locally, not exported as a complete watch history. Recipients can see normal connection metadata such as the source IP; the project has no collection server. Read the privacy policy before use.
+
+FEATURES
+• Rating badges with separate source labels, not a misleading average of different rating systems.
+• Adjustable threshold and dimming strength, with optional hover reveal. Missing or unconfirmed scores do not dim a title.
+• Expanded previews reuse the same title's scores and guard against stale scores when you switch titles.
+• Matching by title, year and type. Review uncertain results, choose a match manually, or restore automatic matching.
+• A local score library with search, movie/series and status filters, sorting, grouping and source details. Opening the library does not itself request new ratings.
+• English and Simplified Chinese interfaces, selected from your browser language with a manual override.
+
+SOURCES AND LIMITS
+An API key is not required for the current free-source mode: mirrored IMDb ratings from Cinemeta and independent TVmaze series ratings. The IMDb mirror may lag and is not an official IMDb API. Optionally supply your own OMDb key for supplementary IMDb, Rotten Tomatoes and Metacritic data. Coverage, quotas and service availability vary; not every title has every score.
+
+BEFORE YOU INSTALL
+Netflix card features require access to a signed-in Netflix website. This extension does not provide a Netflix subscription or access to video, and does not bypass regional restrictions. The library is a view of this device's cached results, not a complete catalog or permanent watchlist. Cache clearing, provider-setting changes and eviction can remove entries.
+
+DATA AND PRIVACY
+There are no ads, analytics SDKs or project-operated collection servers. The extension is not entirely offline: matching sends titles or IMDb IDs to relevant rating services; weak matches may request the same Netflix ID's public English title page anonymously. An optional key is sent only to OMDb. Settings, matches, manual bindings and an optional key are stored locally. Read the privacy policy for details and the current storage-security limitations.
+
+PERMISSIONS
+storage saves local preferences, cache, manual bindings and an optional key. The current candidate uses activeTab to identify the active tab's status when you open the popup. Host access to Netflix and the listed rating services enables card overlays, matching and rating requests. No full browser-history permission, ads or analytics SDKs.
+
+An independent open-source project, not affiliated with, sponsored by or endorsed by Netflix, IMDb, TVmaze, OMDb or other rating services. Third-party data and trademarks belong to their respective owners.
