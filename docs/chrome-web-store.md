@@ -22,7 +22,7 @@ node tests/package-smoke.mjs
 npm run store:kit
 ```
 
-`store:assets` 是显式重拍动作；重拍后需目检并将图片与 `store/assets/provenance.json` 一起提交。`store:kit` 和 CI 只校验、打包已审图片，不会重新渲染覆盖它们。输入/图片哈希不一致会拒绝生成；来源状态包含白名单输入中的未跟踪文件。
+`store:assets` 是显式重拍动作；重拍后需目检并将图片与 `store/assets/provenance.json` 一起提交。`store:kit` 和手动触发的 `Store preparation (manual)` 工作流只校验、打包已审图片，不会重新渲染覆盖它们。该严格校验不在普通应用 CI 中运行，避免每个运行逻辑修复都被迫重做商店截图。输入/图片哈希不一致会拒绝生成；来源状态包含白名单输入中的未跟踪文件。
 
 `dist/*-store-preparation.zip` 是**给发布者的材料包**，不得整个上传。里面 `upload/*-chrome-web-store.zip` 才是满足门槛后拟上传的运行候选包；根目录含 manifest。发布准备不会读取/更改日常浏览器资料或凭据，也不会自动登录、付款、上传或勾选声明。
 
