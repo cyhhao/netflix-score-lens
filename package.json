@@ -12,7 +12,8 @@
     "test:browser": "node tests/e2e.mjs && node tests/background-e2e.mjs && node tests/network-reliability.mjs && node tests/matching-integration.mjs && node tests/content-edge.mjs && node tests/content-visibility.mjs && node tests/content-preview.mjs && node tests/content-episodes.mjs && node tests/content-retries.mjs && node tests/content-lifecycle.mjs && node tests/library-integration.mjs",
     "test:live": "node tests/popup-integration.mjs",
     "package": "python3 scripts/package.py",
-    "store:assets": "node scripts/store-assets.mjs"
+    "store:assets": "node scripts/store-assets.mjs",
+    "store:kit": "python3 scripts/store-kit.py"
   },
   "devDependencies": {"playwright": "1.64.1"}
 }

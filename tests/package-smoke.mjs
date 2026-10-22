@@ -16,6 +16,12 @@ try {
   context=await chromium.launchPersistentContext(join(base,'profile'),{headless:true,executablePath,args:[`--disable-extensions-except=${ext}`,`--load-extension=${ext}`]});
   const worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker'),id=worker.url().split('/')[2];
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const metadata=await worker.evaluate(()=>({manifest:chrome.runtime.getManifest(),name:chrome.i18n.getMessage('extensionName'),description:chrome.i18n.getMessage('extensionDescription')}));
+  assert.equal(metadata.manifest.name,'Netflix Score Lens');
+  assert.equal(metadata.manifest.action.default_title,metadata.name);
+  assert.equal(metadata.manifest.description,metadata.description);
+  assert.ok(metadata.description.length>20&&!metadata.description.includes('__MSG_'));
+  for(const locale of ['en','zh_CN'])assert.ok(JSON.parse(await readFile(join(ext,'_locales',locale,'messages.json'),'utf8')).extensionDescription.message);
   await page.goto(`chrome-extension://${id}/library.html`);
   await page.waitForFunction(()=>document.querySelector('#statTotal')?.textContent==='0');
   assert.equal(await page.locator('#version').textContent(),`v${version}`);

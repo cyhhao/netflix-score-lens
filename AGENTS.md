@@ -11,6 +11,8 @@ Chrome MV3 extension. Source: `https://github.com/cyhhao/netflix-score-lens`. Ru
 - `content.*`: current/legacy cards, episodic cards and expanded mini-modal previews, viewport work, overlays and HUD. Episode card labels are not series titles: resolve their parent show before lookup and use its cache/binding identity. Preview identity comes from its title link, never the trailer video ID; reuse the same per-title result.
 - `popup.*`: settings, correction and source diagnosis.
 - `library.*`: read-only independent local cache browser; not a durable watchlist.
+- `_locales/*/messages.json`: native manifest/store name and summary; separate from runtime `i18n*.js`. Keep package allowlist and metadata smoke tests aligned.
+- `store/`: localized listing text, privacy/reviewer drafts, synthetic artwork and explicit submission gates. `npm run store:kit` makes a publisher handoff, not an approved release; follow `store/START-HERE.zh-CN.md`.
 
 ## Invariants
 - No credentials, personal browser profiles, captured browsing history or private verification reports in Git, screenshots, logs or packages.

@@ -1,0 +1,67 @@
+{
+  "version": "0.6.3",
+  "synthetic": true,
+  "ownerProfileUsed": false,
+  "locales": [
+    {
+      "locale": "en",
+      "screenshots": 4,
+      "previewBadge": "IMDb 5.8",
+      "dimmedCards": 1,
+      "libraryEntries": 4,
+      "providerRequests": 0,
+      "unexpectedRequests": 0,
+      "pageErrors": 0
+    },
+    {
+      "locale": "zh-CN",
+      "screenshots": 4,
+      "previewBadge": "IMDb 5.8",
+      "dimmedCards": 1,
+      "libraryEntries": 4,
+      "providerRequests": 0,
+      "unexpectedRequests": 0,
+      "pageErrors": 0
+    }
+  ],
+  "inputsSha256": {
+    "manifest.json": "2aafe4d87cdef4079d48c1ad7d16d584218fb2fab783ed366bfd657f9bdbafde",
+    "background.js": "459014d28acfbf58e7dccbef59b92331eb0e4959de03aadabe111f944cb2de60",
+    "core.js": "4ce344bc4babd11e52090e445249f096cb811e4434287a0e8ddd831d30476c61",
+    "providers.js": "6a6a7dbeda5d1fa775b33f6f824167bf33f259e51afe1f713235d49e4cb1b498",
+    "matching.js": "51941067407c4633dbd2499cf02d16f2450ed9d10a0429694bf73e0bf286bc57",
+    "netflix-titles.js": "0a2a582bb741d4b3d1f063cc455f3fddd8815e8931e627436bdb3411ef977a9f",
+    "bridge.js": "9253cff8642aa2595043dc587577c1c002021cbb911fa8cb003ea72b7ef3e404",
+    "content.js": "630452b78dc66b1612c7c34b59c9f05b582b80cff5ba29da5e62197804b47f46",
+    "content.css": "f19f49ab2992af9d7baa06fbc2cde2755433544fde432745b0c66f33cf177287",
+    "i18n.js": "ed504976875e45d9551db036b8ea97fa71d16cf8b3e7d90eb444f4df81665ae6",
+    "i18n-content.js": "5122d488396efe7a76e0c9035e9284609da956c5b021e1c4623ca7aff124ec89",
+    "i18n-library.js": "6de9117fe490bc7c1d7e286cc34546dbbc240f72914e92b36ce37826fe9a7e9a",
+    "i18n-popup.js": "d8cb9a4cae52b394b0fe29b2a4994da01de8ccbbcf8a32007a832c0e4e722202",
+    "popup.html": "2b59989adfbc1890ba814716733693a1f12f65655879114117d83ce87ecd1194",
+    "popup.css": "f1a74b25715f5068564e20cecf9093724e6b5d0e80e253768cb6b5c99404bd03",
+    "popup.js": "10f06373a5eacf94483216a616a3253233a717041ee28ebff3104df03316b6bd",
+    "library.html": "f4d28a7065a4cb800756878cba4d3396bd81c6f456b8822309056d0531a40390",
+    "library.css": "2ff3dc2c47b41924bf35b9d75f79f59d1b68f7a4f88701cfb35849b1da4708df",
+    "library.js": "647c24a55d298698de778620743d8bf1240ec4f16728a521fe03a4bb4f86a3d5",
+    "_locales/en/messages.json": "19fd9b19cafe9090f3b9457cf1e1a18242756c190008624f9054f13f202298ed",
+    "_locales/zh_CN/messages.json": "a1e5fcf447983df0117097444faba6f69750849880eaa3b687e01eb546b5aa1e",
+    "icons/icon16.png": "8ea32013a6e0fc867835df6dcd16d8891631d4040cbc71d6b634b10f85dba40a",
+    "icons/icon32.png": "5c676a7632ff2d9f4daf150b1b10e3c080681fe160e4ccf1677a9e04a655b012",
+    "icons/icon48.png": "16f5a4e10bf015f2fdff8be55769f4bfeab4cffeb8a466ff1c781c5063359b44",
+    "icons/icon128.png": "fc68160a73cdc2d937b1cc1c22c3871e8041243b1d8eba15745f88ee20b7965b",
+    "scripts/store-assets.mjs": "23aa0eb17d532ee830ab506909f4f7c3c97409de4e9145632b44ab8faf1b0d0a"
+  },
+  "imagesSha256": {
+    "icon-128.png": "fc68160a73cdc2d937b1cc1c22c3871e8041243b1d8eba15745f88ee20b7965b",
+    "promo-440x280.png": "3eb9b196ea08b74b2a4ce8c4a24cb2a3399533d34df28d06909b258f5ccd811e",
+    "en/01-ratings-1280x800.png": "e7690a437d733c4c49ae6640b5dcaa748b0bdc8745b281d209d7f40b712663cc",
+    "en/02-preview-1280x800.png": "dd654ef0d07f6e793bfafa2b6076c22a784c0e817e12a46a0a473e2fc97477f2",
+    "en/03-library-1280x800.png": "4c3afa39c62ae6851ca92b2ddd0cb8b04d0e1e57ab328559676cfe2842c55da8",
+    "en/04-details-1280x800.png": "5e6a0aac97a9a08d50f1acd1dbf38e1e6306a75045d4598da9d47191835a66c7",
+    "zh-CN/01-ratings-1280x800.png": "118c7e15843ab3dd69d7db6bd4e5738970d4dc1cfbf64a0c526f27bc0ef0fee4",
+    "zh-CN/02-preview-1280x800.png": "c0bb5342971e586dbda96cba705117b9a744358354b5fcb4aeae3c9565efcd04",
+    "zh-CN/03-library-1280x800.png": "3d263b5ac78357c6d3b276eeb2e2da0d756f5e39f2cf94fbdf9410ac0633d246",
+    "zh-CN/04-details-1280x800.png": "3fb9773e66aa917bbd490e0140d0bd0d5c9545f1ee704e9e18d24ad1eaaa90af"
+  }
+}

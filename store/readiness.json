@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "reviewedOn": "2026-10-22",
+  "candidateVersion": "0.6.3",
+  "status": "preparation-only",
+  "submissionAllowed": false,
+  "uploadedToStore": false,
+  "listingName": "Netflix Score Lens",
+  "locales": ["en", "zh-CN"],
+  "screenshotsPerLocale": 4,
+  "assetsUseSyntheticData": true,
+  "privacyPolicy": "https://cyhhao.github.io/netflix-score-lens/privacy.html",
+  "homepage": "https://cyhhao.github.io/netflix-score-lens/",
+  "support": "https://github.com/cyhhao/netflix-score-lens/issues",
+  "gates": [
+    {"id":"account","status":"owner-action","detail":"Confirm publisher account, registration/payment if needed, verified contact, 2-step verification and dashboard identity requirements. No credentials in this kit."},
+    {"id":"secure-storage","status":"open","detail":"Plaintext credential and browsing-derived caches need a reviewed persistence/threat-model decision. Trusted-context access is not encryption; an encryption key kept with the data must not be presented as profile-compromise protection."},
+    {"id":"minimum-permissions","status":"open","detail":"Verify activeTab necessity against Netflix host permissions; remove or substantiate it with tested user-visible need before submission."},
+    {"id":"in-product-disclosure","status":"open","detail":"Listing prominently explains data flow; decide and implement a first-run notice/privacy link before automatic requests as the conservative path."},
+    {"id":"provider-rights","status":"open","detail":"Confirm permissions/licensing for current provider/endpoints and optional Netflix public-title enrichment, or approve a reduced authorized-source design. Public accessibility is not authorization."},
+    {"id":"reviewer-access","status":"owner-action","detail":"Arrange legitimate reviewer Netflix access if required, through private dashboard instructions only."},
+    {"id":"live-acceptance","status":"open","detail":"Accept final candidate on a real signed-in Netflix page, including expanded previews, episode rows, matching, controls and upgrade behavior. Synthetic screenshots are not live acceptance."},
+    {"id":"final-disclosures","status":"open","detail":"Match live dashboard categories to final implementation and publish an affirmative Limited Use statement only after the publisher verifies it is true."}
+  ]
+}

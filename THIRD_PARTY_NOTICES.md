@@ -13,14 +13,17 @@ TVmaze is the source of its own independent show rating, not an IMDb rating. Its
 
 Cinemeta supplies a mirrored IMDb score and title metadata. This is not an official IMDb rating API. The IMDb suggestion endpoint is an undocumented search endpoint used for candidate titles/IDs, not a licensed bulk database distribution mechanism. Public accessibility is **not proof of permission for every use**. The maintainer has not obtained a blanket commercial redistribution license or a service-level commitment. Confirm applicable service/data terms before broad store distribution or commercialization; use an authorized alternative if required.
 
-- Cinemeta source project: https://github.com/Stremio/stremio-cinemeta
+- Live Cinemeta service manifest: https://v3-cinemeta.strem.io/manifest.json
+- Stremio terms: https://www.stremio.com/tos
 - IMDb conditions: https://www.imdb.com/conditions
 
 ## OMDb, Rotten Tomatoes and Metacritic
 
-OMDb access is optional and uses the installing user's own API key. The project supplies no shared key and does not resell access. Ratings and coverage are subject to OMDb's own terms and the rights of the underlying sources. Availability through an API is not a blanket license to redistribute the underlying data. The maintainers make no claim that code being MIT-licensed settles these rights.
+OMDb access is optional and uses the installing user's own API key. The project supplies no shared key and does not resell access. OMDb currently identifies its content as **CC BY-NC 4.0**, and its terms limit use to personal, non-commercial purposes; verify these conditions before distribution or any monetization. Ratings and coverage remain subject to OMDb's terms and the rights of the underlying sources. Availability through an API is not a blanket license to redistribute the underlying data. The maintainers make no claim that code being MIT-licensed settles these rights.
 
 - OMDb: https://www.omdbapi.com/
+- OMDb terms: https://www.omdbapi.com/legal.htm
+- Content license identified by OMDb: https://creativecommons.org/licenses/by-nc/4.0/
 - Rotten Tomatoes and Metacritic source links are human-facing search links where an exact provider permalink is unavailable; they are not guaranteed exact-work permalinks.
 
 ## Netflix public display titles

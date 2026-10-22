@@ -1,127 +1,82 @@
 # Chrome Web Store 上架准备
 
-核对日期：2026-10-19。**本项目尚未提交审核、未上架。** `chrome-web-store.zip` 只是满足目录结构的上传候选包；以下未完成事项是发布门槛，不是勾选后可忽略的风险。
+核对日期：2026-10-22。**尚未上传、送审或上架。** 当前工作已从通用草案整理为可复查的材料包，但未完成的安全、权限、数据源和生产验收事项仍是提交门槛。
 
-## 1. 开发者账户（需要账户所有者操作）
+## 材料入口
 
-1. 用计划长期维护项目的 Google 账户进入 [Chrome Developer Dashboard](https://chrome.google.com/webstore/devconsole/)。
-2. 注册开发者，阅读并接受开发者协议，支付一次性注册费；**金额、可用付款方式及地区资格以后台当时显示为准**。本项目不代付、不替人声明居住地区。
-3. 设置发布者名称、验证联系邮箱，并按 Google 要求启用两步验证及完成身份/商家身份信息。不要把 Google 密码、2FA 或付款信息放进仓库。
-4. 当前公开版插件可免费分发；如果后续增加收费/订阅，需重新检查地址、分发和披露要求。
+- [先读这里](../store/START-HERE.zh-CN.md)：版本、文件用途、所有者操作和未完成门槛。
+- [中文介绍](../store/listing.zh-CN.txt) / [English description](../store/listing.en.txt)：显著说明数据去向、功能、限制与权限。
+- [隐私字段底稿](../store/privacy-answers.md)：single purpose、permissions、remote code、数据类型、保留/删除。
+- [审核操作说明](../store/reviewer-instructions.md)：实际测试流程、Netflix 登录前提、私有凭据边界。
+- [机器可读门槛](../store/readiness.json)：`submissionAllowed:false`；材料齐全不等于可提交。
+- [素材说明](../store/README.md)：合成数据、真实渲染器与实际 Netflix 验收的区别。
+- [公开隐私政策源文件](privacy.html) / [第三方声明](../THIRD_PARTY_NOTICES.md)。
 
-官方：[注册](https://developer.chrome.com/docs/webstore/register) · [账户设置](https://developer.chrome.com/docs/webstore/set-up-account) · [2-Step Verification](https://developer.chrome.com/docs/webstore/program-policies/two-step-verification)
+```sh
+npm ci
+npm test
+npm run test:browser
+npm run store:assets
+npm run package
+node tests/package-smoke.mjs
+npm run store:kit
+```
 
-## 2. 已准备的工程材料
+`store:assets` 是显式重拍动作；重拍后需目检并将图片与 `store/assets/provenance.json` 一起提交。`store:kit` 和手动触发的 `Store preparation (manual)` 工作流只校验、打包已审图片，不会重新渲染覆盖它们。该严格校验不在普通应用 CI 中运行，避免每个运行逻辑修复都被迫重做商店截图。输入/图片哈希不一致会拒绝生成；来源状态包含白名单输入中的未跟踪文件。
 
-- [x] MV3；原始可审查 JS/CSS，无远程下载执行代码。
-- [x] 独立商店 ZIP：`npm run package` → `dist/*-chrome-web-store.zip`，**manifest.json 位于 ZIP 根部**；用户安装包另外生成。
-- [x] 运行时白名单，排除测试、依赖、浏览器资料、私人验收报告和 Key。
-- [x] 图标 16/32/48/128，项目原创镜片图形，无 Netflix 标志。
-- [x] 公开隐私政策源文件 `docs/privacy.html`；目标 URL：`https://cyhhao.github.io/netflix-score-lens/privacy.html`，提交前确认实际可匿名打开。
-- [x] 权限用途、单一用途、描述、测试说明草案，见下方。
-- [x] MIT 源码许可证与独立第三方声明。MIT **不授予第三方评分数据权利**。
-- [ ] 正式商店素材终审：`npm run store:assets` 可生成 1280×800 评分库实际 UI 截图草案及 440×280 小宣传图；截图使用明显标注的演示数据，不冒充真实用户或实时评分。正式提交前应审查准确性，并补充不暴露账号的真实 Netflix 功能截图。
+`dist/*-store-preparation.zip` 是**给发布者的材料包**，不得整个上传。里面 `upload/*-chrome-web-store.zip` 才是满足门槛后拟上传的运行候选包；根目录含 manifest。发布准备不会读取/更改日常浏览器资料或凭据，也不会自动登录、付款、上传或勾选声明。
 
-官方：[准备与 ZIP](https://developer.chrome.com/docs/webstore/prepare) · [图片规格](https://developer.chrome.com/docs/webstore/images)
+## 已完成
 
-图片当前要求：128×128 扩展图标；至少一张 1280×800 或 640×400 截图；440×280 小宣传图。1400×560 marquee 图为可选。不要使用个人观看记录、版权电影海报或未经授权的官方 Logo 作为宣传素材。
+- MV3、原始 JS/CSS、包内执行逻辑，没有远程代码。
+- 运行时白名单，排除依赖、测试、演示数据、商店材料及个人资料。
+- 原生 `_locales/en` / `_locales/zh_CN` + `default_locale:en`，商店可识别两种语言；这是 manifest 元数据本地化，不改变已有界面语言选择逻辑。
+- 当前名称统一为 **Netflix Score Lens**。商店名称/摘要来自 manifest 的本地化消息，不能在后台另填不同标题。未将更名建议默认为所有者批准，也不声称名称等于商标授权。
+- 每种语言四张 1280×800 截图、共用 440×280 小宣传图、共用 128×128 图标（96px 图形 + 16px 透明边距）。截图为不带 alpha 的 PNG；图标保留透明边距。1400×560 marquee 为可选，本轮未制作。
+- 图片使用实际扩展渲染器、虚构片名/评分和原创占位图；明确说明卡片页和放大层外壳不是 Netflix 账户截图。无海报、头像、浏览记录或真实 Key。
+- 隐私政策、主页和支持地址具备公开地址；提交前重查可用性与最终文本。
 
-## 3. 正式提交前的发布门槛
+## 必须关闭的门槛
 
-### A. 凭据和标题缓存的静态存储安全（未完成）
+### 账户与最终认证
 
-目前 `chrome.storage.local` 保存可选 OMDb Key、匹配缓存、手动绑定等，`TRUSTED_CONTEXTS` 只限制调用上下文，**不等于静态加密**。Chrome 的 User Data FAQ 当前明确要求用户数据安全传输并采用强加密静态存储。
+由所有者确认长期维护的 Google 账号，完成必要的注册费、协议、邮箱验证、两步验证及后台要求的身份/商家信息。金额及资格以后台为准，不代付、不推定国家地区。Limited Use 肯定性声明须在发布者核对属实后加入公开政策；当前保留未认证状态。
 
-发布前应制定并实施可验证的密钥管理/留存方案，而不是仅把加密密钥与密文一起放在同一个可读配置文件就声称安全。可评估不持久化 API Key、会话级存储、减少保留的浏览相关数据，或有明确威胁模型的静态加密；任何体验变化需同步迁移、文档和测试。**当前包不能据此直接认证全部安全要求已满足。**
+### 安全处理、最小权限与知情
 
-官方：[User Data FAQ](https://developer.chrome.com/docs/webstore/program-policies/user-data-faq)（尤其第 8、9、14 问）
+`chrome.storage.local` 目前明文保存可选 OMDb Key、作品缓存和手动绑定；`TRUSTED_CONTEXTS` 是访问限制，不是静态加密。官方政策正文要求安全处理；User Data FAQ Q9 明确提及静态强加密，Q8仅说明传输最低要求。保留工程门槛，但不将这解释为已证实会自动拒审。
 
-### B. 数据源使用权与稳定性（未解决）
+须审查密钥管理、迁移与威胁模型。不能把可从同一浏览器配置恢复的密钥包装，宣传为可以保护整个配置被盗或设备受控。会话级 Key 不持久到磁盘，代价是浏览器重启或扩展更新后重新填写；保留无解锁的持久缓存则要如实界定防护边界。该选择影响产品体验，另立工程变更验证，不在材料生成脚本中偷偷改变。
 
-- Netflix 英文展示名来自按需匿名读取的公开标题页，不是官方映射 API；公开可读不代表抓取/复用已获授权，需同样核对其条款与稳定性。
-- IMDb suggestion 为未文档化网页检索端点；不是官方授权给此项目的 API。
-- Cinemeta 的 IMDb 评分是镜像，公开可调用不等于有权大规模分发、商用或转许可。
-- OMDb 的用户自带 Key 不替代对其服务/数据条款的核对。
-- TVmaze 的数据按其 CC BY-SA 条件使用，保留来源、链接和适用的衍生数据许可。
+`activeTab` 当前仍在候选中；官方最小权限说明指出特定 host 权限、基础 `tabs.query` 和 `tabs.sendMessage` 通常不需要它。提交前验证移除影响或给出实际必要性证据。商店介绍已提前披露数据去向，保守方案还应加入首次查询前的产品内提示和隐私链接。
 
-要先确认当前用途允许的访问与分发范围；若不能确认，商店版应改为有明确授权的提供方/可选适配器，并重新验证中文匹配与无 Key 体验。不能通过换名字、隐藏端点或“只用于教育”的声明绕过条款。
+### 数据源与品牌
 
-### C. 数据披露/许可与品牌（需要最终确认）
+IMDb suggestion、Cinemeta 镜像以及 Netflix 公开标题页并非已为本项目取得的授权接口。公开可读、免费分发、MIT 代码许可证或用户自带 Key 都不能单独证明允许这种发行方式。确认许可/适用范围；不能确认时先与所有者确定功能取舍，再换为明确授权的来源，不能悄悄删除核心功能或靠免责声明绕过条款。
 
-自动匹配会把用户遇到的 Netflix 片名或 IMDb ID 发给对应服务，需要补充英文展示名时还会把作品 ID 发给 Netflix 公开标题页；服务能看到来源 IP，可选 Key 仅发给 OMDb。不能把商店隐私栏全部填成“无数据收集”，也不能以“没有项目服务器”为理由省略第三方传输。
+OMDb 页面声明 CC BY-NC 4.0，须核对其个人/非商业条件与底层来源权利；TVmaze 声明 CC BY-SA，保留署名和链接。具体依据在第三方声明和材料说明中。无“必过审”或法律结论。
 
-发布前逐项核对 website content、user activity/browsing-related data、authentication information（可选 Key）的当前后台定义，确保与实际代码和隐私政策一致。若处理超出用户对功能的合理预期，需要满足显著披露及明确同意要求。Limited Use/security 认证由发布者核对真实实现后完成，不能由文案代替合规。
+### 实际可复现验收
 
-项目名称应突出独立工具，建议商店标题使用 **Score Lens for Netflix**，保留“不隶属 Netflix/评分服务”的声明；当前源码/仓库名称不是商标授权。品牌/素材最终由发布者确认。
+最终候选需要真实 Netflix 首页/电影/剧集/搜索、滚动、独立放大预览、阈值、纠错、评分库、不同 Key 状态及升级验收。尤其 0.6.3 的单集父剧集身份需要真实页面确认。自动 fixture/模拟评分不替代实际验收，也不替代审核账号。
 
-官方：[隐私字段](https://developer.chrome.com/docs/webstore/cws-dashboard-privacy) · [政策](https://developer.chrome.com/docs/webstore/program-policies)
+卡片功能需要 Netflix 登录。若要求审核访问，由所有者合法安排并仅通过私有 Test instructions 传递；不使用个人主账号资料，不写进开源仓库或材料 ZIP。
 
-### D. 生产环境与审核可复现性（待完成）
+## 真正的提交流程（当前未执行）
 
-对最终候选包重新执行：Netflix 首页/电影/剧集/搜索、懒加载、悬停、阈值、开关、跨语言歧义、手动绑定、无 Key/有 Key/失效 Key、评分库及升级迁移。自动化 fixture 与真实 API 测试不能代替最终日常 Chrome 验收。
+门槛关闭 → 确认发布账号/名称/分发范围 → New item 上传内层 ZIP → Store listing / Privacy / Distribution / Test instructions → 所有者批准最终资料和声明 → Submit for review。
 
-Netflix 主页面功能需要登录。若审核方要求测试凭据，需由发布者提供合法、可供审核使用的测试环境，**仅放私有 Test instructions 字段**；不要发布个人 Netflix/Google 凭据，也不要承诺不需要登录。
+建议审核通过后再手动发布。官方的 staged 状态有保留期限（当前文档为 30 天），届时重查。未列出分发也需要审核；不能承诺几天必过。代码合并、GitHub Release、商店草稿、送审和上架是五个不同状态。
 
-## 4. 可粘贴的单一用途与权限说明（待最终复核）
+## 官方来源
 
-**Single purpose**
-
-> Help users compare Netflix movies and series by displaying clearly labelled third-party ratings, dimming titles below a user-selected threshold, and browsing previously matched results in a local score library.
-
-**storage** — Store rating preferences, cached matches/scores, explicit manual bindings and the user's optional OMDb credential. Storage is restricted to trusted extension contexts; see the open at-rest security item above.
-
-**activeTab** — On the user's explicit popup action, identify the current tab to explain whether Netflix is available, another site is active, or the page is browser-restricted. No global browsing-history permission is requested. Re-evaluate whether this can be removed while preserving diagnostics before store submission.
-
-**www.netflix.com** — Read displayed title names/IDs and requested public title/year/type metadata; for episode cards, follow only the explicit parent-show relationship and read that show's public identity, without enumerating application caches; optionally request a same-ID public English title page with omitted credentials for weak matches; place rating badges and reversible dimming only on Netflix cards.
-
-**v3-cinemeta.strem.io / cinemeta-live.strem.io** — Search metadata and resolve mirrored IMDb scores, including the service's documented-in-code redirect target.
-
-**v3.sg.media-imdb.com** — Resolve localized title candidates and IMDb IDs. This remains subject to the unresolved provider authorization item.
-
-**api.tvmaze.com** — Resolve a series' independent TVmaze rating using its IMDb ID.
-
-**www.omdbapi.com** — Optional user-key-based supplementary ratings and explicit source-health verification.
-
-**Remote code** — No. Network responses are parsed as data; all executable logic is included in the package. No downloaded script, remote module, `eval` or interpreter is used for provider responses.
-
-## 5. Store listing 草案
-
-**名称建议**：Score Lens for Netflix
-
-**简短描述**：Netflix 评分角标、可调低分遮罩与本机评分库。支持免费评分来源及可选 OMDb，跨语言结果可手动纠错。
-
-**完整描述**：
-
-在 Netflix 浏览电影和剧集时，让评分直接出现在卡片上。按自己的评分口径与阈值弱化低分内容，悬停即可恢复亮度。
-
-- 来源独立标注，保留 IMDb/TVmaze 的 10 分制以及烂番茄/Metacritic 的原始尺度。
-- 提供不强制填 Key 的模式，可选用户自己的 OMDb Key 补充来源；部分作品或来源可能缺分。
-- 片名匹配会在需要时按请求的 Netflix ID 读取公开英文展示名；不带 Cookie、不执行页面脚本、不保存 HTML。只有同一 ID、英语页、已有年份/类型与唯一 IMDb 候选一致时才自动提高置信度，冲突仍需用户确认。
-- 独立评分库可查看本机已缓存作品，支持搜索、类别/状态筛选、排序、分组及来源资料。
-- 不含广告、分析 SDK 或项目收集服务器；匹配仍会向评分服务发送片名/ID，必要时也会向 Netflix 公开标题页发送请求中的作品 ID，详见隐私政策。
-
-需要 Netflix 网站登录才能在作品卡片上工作。本机评分库不是 Netflix 全量目录，缓存清理/模式变更会影响记录。该扩展为独立项目，与 Netflix 或评分提供方无关联。具体免费数据源以最终通过发布审查的实现为准。
-
-**支持 URL**：https://github.com/cyhhao/netflix-score-lens/issues
-
-**主页**：https://cyhhao.github.io/netflix-score-lens/
-
-**隐私政策**：https://cyhhao.github.io/netflix-score-lens/privacy.html
-
-## 6. 审核测试说明草案
-
-1. 登录合法的 Netflix 测试账户，打开带作品卡片的浏览/搜索页。
-2. 无需 OMDb Key，等待视口附近卡片的免费评分；遇到无评分或歧义是预期状态，不应变暗。
-3. 打开扩展弹窗，改变阈值/开关，验证卡片即时响应；点击角标查看来源；悬停低分卡片恢复亮度。
-4. 对歧义作品在「作品」中搜索 IMDb 标题/编号，明确绑定，再恢复自动匹配。
-5. 点击「评分库」，关闭 Netflix 标签页，验证已缓存列表仍可搜索/筛选/排序/分组。
-6. OMDb 为可选。核心免费功能不需要审核者购买 Key；若要测试补充来源，使用经授权的测试 Key，仅在私有审核字段传递。不得上传真实个人 Key。
-7. 浏览器 fixture 测试只能用于工程回归，不能作为提供 Netflix 登录的替代品。
-
-## 7. 实际发布流程
-
-只有上面门槛完成后：开发者后台 **Add new item → 上传 ZIP → Store listing / Privacy / Distribution / Test instructions → Submit for Review**。建议首次选择审核后暂不自动发布（deferred publishing），审核通过后再人工检查。官方说明通过后 staged 状态最多保留 30 天，超过需重新送审。
-
-审核通常数天，也可能数周，不能保证通过或承诺某个具体上线日期。GitHub 开源、GitHub Release、商店上传草稿、提交审核与正式发布是不同状态，发布记录必须分别报告。
-
-官方：[首次发布流程](https://developer.chrome.com/docs/webstore/publish) · [审核流程](https://developer.chrome.com/docs/webstore/review-process)
+- https://developer.chrome.com/docs/webstore/register
+- https://developer.chrome.com/docs/webstore/set-up-account
+- https://developer.chrome.com/docs/webstore/publish
+- https://developer.chrome.com/docs/webstore/cws-dashboard-listing
+- https://developer.chrome.com/docs/webstore/images
+- https://developer.chrome.com/docs/webstore/cws-dashboard-privacy
+- https://developer.chrome.com/docs/webstore/program-policies/user-data-faq
+- https://developer.chrome.com/docs/webstore/program-policies/limited-use
+- https://developer.chrome.com/docs/webstore/troubleshooting
+- https://developer.chrome.com/docs/webstore/review-process
