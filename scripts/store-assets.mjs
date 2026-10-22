@@ -1,10 +1,11 @@
-// Reproducible store drafts: actual extension renderer + clearly labelled synthetic data.
+// Regenerate store drafts: actual extension renderer + clearly labelled synthetic data.
 // Disposable profiles only; no owner account, remote artwork, credentials or live requests.
 import {chromium} from 'playwright';
 import {mkdtemp,mkdir,rm,readFile,copyFile,writeFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {executablePath} from '../tests/browser.mjs';
 const root=resolve(import.meta.dirname,'..'),out=join(root,'store/assets');
 const version=JSON.parse(await readFile(join(root,'manifest.json'),'utf8')).version;
@@ -83,3 +84,11 @@ for(const [locale,c] of Object.entries(languages)){
 }
 await mkdir(join(root,'artifacts'),{recursive:true});
 await writeFile(join(root,'artifacts/store-assets-report.json'),JSON.stringify(report,null,2)+'\n');
+// Commit reviewed images + their provenance together. store:kit validates and
+// packages them verbatim; it must not silently replace artwork during CI/build.
+const inputs=['manifest.json','background.js','core.js','providers.js','matching.js','netflix-titles.js','bridge.js','content.js','content.css','i18n.js','i18n-content.js','i18n-library.js','i18n-popup.js','popup.html','popup.css','popup.js','library.html','library.css','library.js','_locales/en/messages.json','_locales/zh_CN/messages.json',...['16','32','48','128'].map(s=>`icons/icon${s}.png`),'scripts/store-assets.mjs'];
+const pictures=['icon-128.png','promo-440x280.png',...Object.keys(languages).flatMap(l=>['01-ratings','02-preview','03-library','04-details'].map(s=>`${l}/${s}-1280x800.png`))];
+const sha=async p=>createHash('sha256').update(await readFile(p)).digest('hex');
+report.inputsSha256=Object.fromEntries(await Promise.all(inputs.map(async p=>[p,await sha(join(root,p))])));
+report.imagesSha256=Object.fromEntries(await Promise.all(pictures.map(async p=>[p,await sha(join(out,p))])));
+await writeFile(join(out,'provenance.json'),JSON.stringify(report,null,2)+'\n');

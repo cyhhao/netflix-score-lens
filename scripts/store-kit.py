@@ -6,6 +6,8 @@ import datetime
 import hashlib
 import io
 import json
+import posixpath
+import re
 import runpy
 import struct
 import subprocess
@@ -68,7 +70,15 @@ for locale in readiness['locales']:
     for stem in ['01-ratings', '02-preview', '03-library', '04-details']:
         name = f'assets/{locale}/{stem}-1280x800.png'
         images[name] = png_info(STORE / name, (1280, 800))
-asset_report = json.loads((ROOT / 'artifacts/store-assets-report.json').read_text())
+asset_report = json.loads((STORE / 'assets/provenance.json').read_text())
+expected_inputs = (set(runtime) - {'LICENSE', 'THIRD_PARTY_NOTICES.md'}) | {'scripts/store-assets.mjs'}
+if set(asset_report['inputsSha256']) != expected_inputs:
+    raise SystemExit('Incomplete artwork input provenance')
+for name, digest in asset_report['inputsSha256'].items():
+    if hashlib.sha256((ROOT / name).read_bytes()).hexdigest() != digest:
+        raise SystemExit(f'Artwork input changed; regenerate and review assets: {name}')
+if asset_report['imagesSha256'] != {n.removeprefix('assets/'): x['sha256'] for n, x in images.items()}:
+    raise SystemExit('Artwork differs from its reviewed provenance')
 if asset_report['version'] != version or asset_report['ownerProfileUsed'] is not False:
     raise SystemExit('Stale/unsafe asset report')
 if {x['locale'] for x in asset_report['locales']} != set(readiness['locales']):
@@ -85,15 +95,27 @@ for name in ['START-HERE.zh-CN.md', 'README.md', 'listing.en.txt', 'listing.zh-C
     files[name] = (STORE / name).read_bytes()
 for name in images:
     files[name] = (STORE / name).read_bytes()
+files['assets/provenance.json'] = (STORE / 'assets/provenance.json').read_bytes()
 files['upload/' + candidate.name] = candidate.read_bytes()
 for path, name in [('docs/privacy.html', 'privacy.html'), ('docs/chrome-web-store.md', 'chrome-web-store.md'),
                    ('THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES.md')]:
-    files['reference/' + name] = (ROOT / path).read_bytes()
+    data = (ROOT / path).read_bytes()
+    if path == 'docs/chrome-web-store.md':
+        data = data.decode().replace('../store/', '../').replace('(../THIRD_PARTY_NOTICES.md)', '(THIRD_PARTY_NOTICES.md)').encode()
+    files['reference/' + name] = data
 files['listing-fields.json'] = (json.dumps(fields, ensure_ascii=False, indent=2) + '\n').encode()
+inputs = set(runtime) | expected_inputs | {'scripts/package.py', 'scripts/store-kit.py', 'package.json',
+    'docs/privacy.html', 'docs/chrome-web-store.md'} | {'store/' + n for n in files if n in images or n == 'assets/provenance.json'} | {
+    'store/' + n for n in ['START-HERE.zh-CN.md', 'README.md', 'listing.en.txt', 'listing.zh-CN.txt',
+                          'privacy-answers.md', 'reviewer-instructions.md', 'readiness.json']}
+tracked = set(subprocess.check_output(['git', 'ls-files', '--', *sorted(inputs)], cwd=ROOT, text=True).splitlines())
+untracked_inputs = sorted(inputs - tracked)
+modified_inputs = subprocess.check_output(['git', 'diff', '--name-only', 'HEAD', '--', *sorted(inputs)], cwd=ROOT, text=True).splitlines()
 verification = {
     'generatedAt': datetime.datetime.now(datetime.timezone.utc).isoformat(),
     'sourceCommit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
-    'sourceHasTrackedChanges': bool(subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=ROOT, text=True).strip()),
+    'sourceHasInputChanges': bool(modified_inputs or untracked_inputs),
+    'modifiedInputs': modified_inputs, 'untrackedInputs': untracked_inputs,
     'candidateVersion': version,
     'candidateSHA256': hashlib.sha256(candidate.read_bytes()).hexdigest(),
     'runtimeFiles': len(runtime), 'manifestAtRoot': True, 'nativeLocales': ['en', 'zh_CN'],
@@ -102,6 +124,16 @@ verification = {
     'scope': 'Package/image/metadata structure and offline render evidence only. Not a policy certification, live Netflix acceptance or test-suite completion claim.'
 }
 files['verification.json'] = (json.dumps(verification, ensure_ascii=False, indent=2) + '\n').encode()
+# Relative links must work in the handoff layout, not merely in the repository.
+for name, data in files.items():
+    if not name.endswith('.md'):
+        continue
+    for href in re.findall(r'\[[^\]]*\]\(([^)\s]+)\)', data.decode()):
+        if '://' in href or href.startswith('#'):
+            continue
+        target = posixpath.normpath(posixpath.join(posixpath.dirname(name), href.split('#')[0]))
+        if target not in files:
+            raise SystemExit(f'Broken handoff link in {name}: {href}')
 files['SHA256SUMS.txt'] = ''.join(f'{hashlib.sha256(data).hexdigest()}  {name}\n' for name, data in sorted(files.items())).encode()
 kit = ROOT / 'dist' / f'netflix-score-lens-{version}-store-preparation.zip'
 with zipfile.ZipFile(kit, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:

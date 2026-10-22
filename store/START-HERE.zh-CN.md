@@ -15,7 +15,8 @@
 - `privacy-answers.md`：单一用途、权限、远程代码和数据类型填写底稿，含仍待核对的项。
 - `reviewer-instructions.md`：审核操作步骤与登录前提。测试凭据由发布者另行通过后台私有字段提供，不包含在这份材料里。
 - `readiness.json`：机器可读的待办门槛，`submissionAllowed:false`。
-- `verification.json`、`SHA256SUMS.txt`：包/素材/本地化结构检查与文件校验；它们不是合规或实际页面验收证书。
+- `assets/provenance.json`：生成时的隔离浏览器证据，以及渲染器输入/图片哈希；打包直接使用已审图片，不在 CI 中悄悄重拍。
+- `verification.json`、`SHA256SUMS.txt`：包/素材/本地化结构检查、输入是否有修改或未跟踪文件，以及文件校验；它们不是合规或实际页面验收证书。
 - `reference/`：隐私政策当前副本、上架规则索引和第三方声明。以最终公开政策和实际代码为准。
 
 ## 已完成的准备
